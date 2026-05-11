@@ -3,21 +3,32 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
-import archiver from 'archiver';
 import { fileURLToPath } from 'node:url';
 
+// Dynamically import the required ESM classes from archiver
+const { ZipArchive } = await import('archiver');
+
+/**
+ * Resolve project paths
+ */
 const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..'
 );
 
 const packageJson = JSON.parse(
-  await fs.readFile(path.join(rootDir, 'package.json'), 'utf8')
+  await fs.readFile(
+    path.join(rootDir, 'package.json'),
+    'utf8'
+  )
 );
 
 const distDir = path.join(rootDir, 'dist');
 
-const stagingDir = path.join(distDir, packageJson.name);
+const stagingDir = path.join(
+  distDir,
+  packageJson.name
+);
 
 const outputFile = path.join(
   distDir,
@@ -32,45 +43,30 @@ await fs.rm(stagingDir, {
   force: true,
 });
 
-await fs.rm(
-  path.join(distDir, 'claude-deepseek-model-proxy'),
-  {
-    recursive: true,
-    force: true,
-  }
-);
-
-await fs.rm(
-  path.join(
-    distDir,
-    'claude-deepseek-model-proxy-0.1.0.mcpb'
-  ),
-  {
-    force: true,
-  }
-);
-
 await fs.rm(outputFile, {
   force: true,
 });
 
 /**
- * Create staging directories
+ * Create staging folders
  */
-await fs.mkdir(path.join(stagingDir, 'server'), {
-  recursive: true,
-});
+await fs.mkdir(
+  path.join(stagingDir, 'server'),
+  { recursive: true }
+);
 
-await fs.mkdir(path.join(stagingDir, 'scripts'), {
-  recursive: true,
-});
+await fs.mkdir(
+  path.join(stagingDir, 'scripts'),
+  { recursive: true }
+);
 
-await fs.mkdir(path.join(stagingDir, 'srcs'), {
-  recursive: true,
-});
+await fs.mkdir(
+  path.join(stagingDir, 'srcs'),
+  { recursive: true }
+);
 
 /**
- * Copy project files
+ * Copy required files
  */
 await copyFile('manifest.json', 'manifest.json');
 await copyFile('proxy.mjs', 'proxy.mjs');
@@ -109,14 +105,15 @@ await copyFile(
 );
 
 /**
- * Create .mcpb archive
+ * Create MCPB archive
  */
 await zipDirectory(stagingDir, outputFile);
 
-console.log(`\nBuild complete:\n${outputFile}\n`);
+console.log('\nBuild complete!');
+console.log(outputFile);
 
 /**
- * Helper: Copy file into staging directory
+ * Copy helper
  */
 async function copyFile(from, to) {
   const source = path.join(rootDir, from);
@@ -126,13 +123,14 @@ async function copyFile(from, to) {
 }
 
 /**
- * Helper: Create ZIP archive
+ * Zip helper
  */
 async function zipDirectory(sourceDir, outPath) {
   return new Promise((resolve, reject) => {
     const output = fsSync.createWriteStream(outPath);
 
-    const archive = archiver('zip', {
+    // Create a new ZipArchive instance with the desired options
+    const archive = new ZipArchive({
       zlib: {
         level: 9,
       },
@@ -140,12 +138,14 @@ async function zipDirectory(sourceDir, outPath) {
 
     output.on('close', () => {
       console.log(
-        `Archive created (${archive.pointer()} bytes)`
+        `Archive created successfully (${archive.pointer()} bytes)`
       );
       resolve();
     });
 
-    output.on('error', reject);
+    output.on('error', (err) => {
+      reject(err);
+    });
 
     archive.on('warning', (err) => {
       if (err.code === 'ENOENT') {
@@ -155,13 +155,16 @@ async function zipDirectory(sourceDir, outPath) {
       }
     });
 
-    archive.on('error', reject);
+    archive.on('error', (err) => {
+      reject(err);
+    });
 
     archive.pipe(output);
 
     /**
-     * false = do not nest sourceDir itself,
-     * only include its contents
+     * false means:
+     * include contents of sourceDir
+     * without nesting sourceDir itself
      */
     archive.directory(sourceDir, false);
 
