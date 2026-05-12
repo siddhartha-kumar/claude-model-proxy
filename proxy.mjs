@@ -592,7 +592,7 @@ export function loadConfig(env = process.env) {
     modelAliases,
     modelRoutes,
     claudeFamilyFallback,
-    rewriteResponses: parseBoolean(env.REWRITE_RESPONSES, true),
+    rewriteResponses: parseBoolean(env.REWRITE_RESPONSES, false),
     requestBodyLimitBytes: parseInteger(
       env.REQUEST_BODY_LIMIT_BYTES,
       DEFAULT_REQUEST_BODY_LIMIT_BYTES,
@@ -1683,7 +1683,7 @@ function normalizeConfig(config) {
     modelAliases: config.modelAliases || config.reverseModelMap || DEFAULT_MODEL_ALIASES,
     modelRoutes: normalizeProviderRoutes(config.modelRoutes || DEFAULT_MODEL_ROUTES),
     claudeFamilyFallback: config.claudeFamilyFallback || DEFAULT_CLAUDE_FAMILY_FALLBACK,
-    rewriteResponses: config.rewriteResponses ?? true,
+    rewriteResponses: config.rewriteResponses ?? false,
     requestBodyLimitBytes: config.requestBodyLimitBytes || DEFAULT_REQUEST_BODY_LIMIT_BYTES,
   };
 }

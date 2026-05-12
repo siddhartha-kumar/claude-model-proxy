@@ -1095,6 +1095,20 @@ test('stripClaudeDate removes the 8-digit date suffix Claude Desktop appends', (
   assert.equal(stripClaudeDate('claude-haiku-4-5-2025'), 'claude-haiku-4-5-2025');
 });
 
+test('REWRITE_RESPONSES defaults to false; opt in explicitly with REWRITE_RESPONSES=true', () => {
+  // No env var → false.
+  const defaultConfig = loadConfig({});
+  assert.equal(defaultConfig.rewriteResponses, false);
+
+  // Explicit opt-in.
+  const enabled = loadConfig({ REWRITE_RESPONSES: 'true' });
+  assert.equal(enabled.rewriteResponses, true);
+
+  // Explicit opt-out (matches default).
+  const disabled = loadConfig({ REWRITE_RESPONSES: 'false' });
+  assert.equal(disabled.rewriteResponses, false);
+});
+
 test('resolveClaudeFamily detects the haiku/sonnet/opus family', () => {
   assert.equal(resolveClaudeFamily('claude-haiku-4-5-20251001'), 'haiku');
   assert.equal(resolveClaudeFamily('claude-sonnet-4-6'), 'sonnet');
@@ -1234,6 +1248,47 @@ test('/v1/messages/count_tokens is answered locally with a heuristic estimate', 
   assert.equal(response.statusCode, 200);
   assert.equal(typeof response.body.input_tokens, 'number');
   assert.ok(response.body.input_tokens >= 1);
+});
+
+test('with rewriteResponses=false, upstream model ids are passed through unchanged', async (t) => {
+  const ollama = http.createServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      id: 'chatcmpl_passthrough',
+      model: 'qwen3-coder:480b-cloud',
+      choices: [
+        {
+          finish_reason: 'stop',
+          message: { role: 'assistant', content: 'raw model id' },
+        },
+      ],
+    }));
+  });
+  await listen(ollama);
+  t.after(() => close(ollama));
+
+  const config = createTestConfig({
+    ollamaBaseUrl: `http://127.0.0.1:${ollama.address().port}/v1`,
+  });
+  // Pin the new default explicitly so the assertion is robust to future
+  // changes in createTestConfig.
+  config.rewriteResponses = false;
+
+  const proxy = createProxyServer(config);
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await postJson(`http://127.0.0.1:${proxy.address().port}/v1/messages`, {
+    model: 'claude-ollama-qwen3-coder',
+    max_tokens: 16,
+    messages: [{ role: 'user', content: 'hi' }],
+  });
+
+  // Request alias goes to the proxy, but the response body reports the raw
+  // upstream id because rewriteResponses is off.
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.model, 'qwen3-coder:480b-cloud');
+  assert.equal(response.body.content[0].text, 'raw model id');
 });
 
 test('routes HuggingFace requests through the OpenAI-compatible router endpoint', async (t) => {
