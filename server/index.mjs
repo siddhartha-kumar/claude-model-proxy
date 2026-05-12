@@ -9,7 +9,7 @@ import {
 } from '../proxy.mjs';
 
 const SERVER_NAME = 'claude-model-proxy';
-const SERVER_VERSION = '0.2.0';
+const SERVER_VERSION = '0.3.0';
 const STATUS_TOOL_NAME = 'model_proxy_status';
 const SERVER_INSTRUCTIONS = 'This extension keeps a local model-name proxy running for Claude Desktop gateway requests. Use model_proxy_status to inspect runtime URL, provider key flags, and model routes.';
 const STATUS_TOOL = {

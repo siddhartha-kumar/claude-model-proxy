@@ -793,6 +793,8 @@ test('manifest exposes provider keys plus Claude family fallback overrides', () 
     'default_provider',
     'ollama_base_url',
     'ollama_api_key',
+    'huggingface_base_url',
+    'huggingface_api_key',
     'claude_haiku_model',
     'claude_sonnet_model',
     'claude_opus_model',
@@ -812,6 +814,8 @@ test('manifest exposes provider keys plus Claude family fallback overrides', () 
     'MOONSHOT_API_KEY',
     'OLLAMA_BASE_URL',
     'OLLAMA_API_KEY',
+    'HUGGINGFACE_BASE_URL',
+    'HUGGINGFACE_API_KEY',
     'CLAUDE_HAIKU_MODEL',
     'CLAUDE_SONNET_MODEL',
     'CLAUDE_OPUS_MODEL',
@@ -1021,6 +1025,61 @@ test('uses Anthropic-compatible provider base URLs by default', () => {
   // Conflict resolution: same upstream id glm-5.1 → different providers per alias.
   assert.equal(config.modelRoutes['claude-ollama-glm-5.1'], 'ollama');
   assert.equal(config.modelRoutes['glm-5.1'], 'glm');
+
+  // HuggingFace provider defaults and route table.
+  assert.equal(
+    config.providers.huggingface.upstreamBaseUrl.href,
+    'https://router.huggingface.co/v1',
+  );
+  assert.equal(config.providers.huggingface.format, 'openai-chat');
+  assert.equal(config.providers.huggingface.authScheme, 'bearer');
+
+  assert.equal(
+    config.modelMap['claude-hf-llama-3.3-70b'],
+    'meta-llama/Llama-3.3-70B-Instruct',
+  );
+  assert.equal(
+    config.modelMap['claude-hf-deepseek-r1'],
+    'deepseek-ai/DeepSeek-R1',
+  );
+  assert.equal(
+    config.modelMap['claude-hf-qwen-3-coder-480b'],
+    'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+  );
+
+  const hfRoutes = Object.entries(config.modelRoutes)
+    .filter(([, provider]) => provider === 'huggingface')
+    .map(([model]) => model);
+
+  for (const expected of [
+    'claude-hf-llama-3.3-70b',
+    'claude-hf-llama-3.1-405b',
+    'claude-hf-llama-3.1-70b',
+    'claude-hf-llama-3.1-8b',
+    'claude-hf-qwen-2.5-72b',
+    'claude-hf-qwen-2.5-coder-32b',
+    'claude-hf-qwen-3-coder-480b',
+    'claude-hf-qwen-3-235b',
+    'claude-hf-deepseek-v3',
+    'claude-hf-deepseek-v3.1',
+    'claude-hf-deepseek-r1',
+    'claude-hf-deepseek-r1-distill-llama-70b',
+    'claude-hf-mistral-large-2411',
+    'claude-hf-mixtral-8x7b',
+    'claude-hf-mistral-7b',
+    'claude-hf-gemma-2-27b',
+    'claude-hf-gemma-2-9b',
+    'claude-hf-phi-4',
+    'claude-hf-phi-3-medium',
+    'claude-hf-command-r-plus',
+    'claude-hf-yi-1.5-34b',
+    'claude-hf-nemotron-70b',
+  ]) {
+    assert.ok(
+      hfRoutes.includes(expected),
+      `expected ${expected} to route to huggingface provider`,
+    );
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1177,6 +1236,118 @@ test('/v1/messages/count_tokens is answered locally with a heuristic estimate', 
   assert.ok(response.body.input_tokens >= 1);
 });
 
+test('routes HuggingFace requests through the OpenAI-compatible router endpoint', async (t) => {
+  let upstreamPath;
+  let upstreamAuthorization;
+  let upstreamBody;
+
+  const hf = http.createServer(async (req, res) => {
+    upstreamPath = req.url;
+    upstreamAuthorization = req.headers.authorization;
+    upstreamBody = await readBody(req);
+
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      id: 'chatcmpl_hf',
+      model: 'meta-llama/Llama-3.3-70B-Instruct',
+      choices: [
+        {
+          finish_reason: 'stop',
+          message: { role: 'assistant', content: 'hf ok' },
+        },
+      ],
+      usage: { prompt_tokens: 12, completion_tokens: 4 },
+    }));
+  });
+  await listen(hf);
+  t.after(() => close(hf));
+
+  const proxy = createProxyServer(createTestConfig({
+    huggingfaceBaseUrl: `http://127.0.0.1:${hf.address().port}/v1`,
+  }));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await postJson(`http://127.0.0.1:${proxy.address().port}/v1/messages`, {
+    model: 'claude-hf-llama-3.3-70b',
+    max_tokens: 64,
+    messages: [{ role: 'user', content: 'hello' }],
+  });
+
+  const parsedUpstreamBody = JSON.parse(upstreamBody);
+  assert.equal(upstreamPath, '/v1/chat/completions');
+  assert.equal(upstreamAuthorization, 'Bearer huggingface-test-key');
+  // Model id is the HF repo path (with slash); proxy must forward it untouched.
+  assert.equal(parsedUpstreamBody.model, 'meta-llama/Llama-3.3-70B-Instruct');
+  assert.equal(parsedUpstreamBody.max_tokens, 64);
+  assert.equal(response.statusCode, 200);
+  // Response is rewritten back to the Claude alias the client used.
+  assert.equal(response.body.model, 'claude-hf-llama-3.3-70b');
+  assert.equal(response.body.content[0].text, 'hf ok');
+});
+
+test('converts HuggingFace streaming responses to Anthropic SSE', async (t) => {
+  const hf = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.write('data: {"id":"hf_stream","model":"deepseek-ai/DeepSeek-R1","choices":[{"delta":{"content":"he"}}]}\n\n');
+    res.end('data: {"id":"hf_stream","model":"deepseek-ai/DeepSeek-R1","choices":[{"delta":{"content":"llo"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+  });
+  await listen(hf);
+  t.after(() => close(hf));
+
+  const proxy = createProxyServer(createTestConfig({
+    huggingfaceBaseUrl: `http://127.0.0.1:${hf.address().port}/v1`,
+  }));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await postJson(`http://127.0.0.1:${proxy.address().port}/v1/messages`, {
+    model: 'claude-hf-deepseek-r1',
+    stream: true,
+    messages: [{ role: 'user', content: 'hi' }],
+  });
+
+  assert.match(response.text, /event: message_start/);
+  assert.match(response.text, /"model":"claude-hf-deepseek-r1"/);
+  assert.match(response.text, /"text":"he"/);
+  assert.match(response.text, /"text":"llo"/);
+  assert.match(response.text, /event: message_stop/);
+});
+
+test('HuggingFace credentials load from HF_API_KEY / HF_TOKEN aliases too', () => {
+  const fromCanonical = loadConfig({ HUGGINGFACE_API_KEY: 'hf-canonical' });
+  assert.equal(fromCanonical.providers.huggingface.upstreamApiKey, 'hf-canonical');
+
+  const fromShort = loadConfig({ HF_API_KEY: 'hf-short' });
+  assert.equal(fromShort.providers.huggingface.upstreamApiKey, 'hf-short');
+
+  const fromToken = loadConfig({ HF_TOKEN: 'hf-token' });
+  assert.equal(fromToken.providers.huggingface.upstreamApiKey, 'hf-token');
+
+  // Canonical wins over short alias when both are set.
+  const both = loadConfig({ HUGGINGFACE_API_KEY: 'win', HF_TOKEN: 'lose' });
+  assert.equal(both.providers.huggingface.upstreamApiKey, 'win');
+});
+
+test('/v1/models includes the HuggingFace Claude aliases', async (t) => {
+  const proxy = createProxyServer(createTestConfig({}));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await getJson(`http://127.0.0.1:${proxy.address().port}/v1/models`);
+  assert.equal(response.statusCode, 200);
+
+  const ids = response.body.data.map((m) => m.id);
+  for (const expected of [
+    'claude-hf-llama-3.3-70b',
+    'claude-hf-deepseek-r1',
+    'claude-hf-qwen-3-coder-480b',
+    'claude-hf-mistral-large-2411',
+  ]) {
+    assert.ok(ids.includes(expected), `expected ${expected} in /v1/models`);
+  }
+});
+
 test('buildTargetUrl does not produce /v1/v1 when the Ollama base URL already ends in /v1', async (t) => {
   let upstreamPath;
   const ollama = http.createServer(async (req, res) => {
@@ -1217,6 +1388,7 @@ function createTestConfig({
   geminiBaseUrl = 'http://127.0.0.1:6/v1beta/openai',
   qwenBaseUrl = 'http://127.0.0.1:7/compatible-mode/v1',
   ollamaBaseUrl = 'http://127.0.0.1:9/v1',
+  huggingfaceBaseUrl = 'http://127.0.0.1:10/v1',
   anthropicBaseUrl = 'http://127.0.0.1:8',
 }) {
   return {
@@ -1263,6 +1435,13 @@ function createTestConfig({
       ollama: {
         upstreamBaseUrl: new URL(ollamaBaseUrl),
         upstreamApiKey: 'ollama-test-key',
+        format: 'openai-chat',
+        authScheme: 'bearer',
+        maxTokensField: 'max_tokens',
+      },
+      huggingface: {
+        upstreamBaseUrl: new URL(huggingfaceBaseUrl),
+        upstreamApiKey: 'huggingface-test-key',
         format: 'openai-chat',
         authScheme: 'bearer',
         maxTokensField: 'max_tokens',

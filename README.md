@@ -1,9 +1,9 @@
 # Claude Model Proxy
 
 A local HTTP proxy that lets Claude Desktop's **Gateway / third-party inference**
-feature talk to DeepSeek, Moonshot/Kimi, Z.AI GLM, Xiaomi MiMo, OpenAI, Gemini,
-Qwen/DashScope, Ollama Cloud (Turbo), or real Anthropic — all routed by the
-model name Claude Desktop sends.
+feature talk to Ollama Cloud (Turbo), HuggingFace Inference Router, DeepSeek,
+Moonshot/Kimi, Z.AI GLM, Xiaomi MiMo, OpenAI, Gemini, Qwen/DashScope, or real
+Anthropic — all routed by the model name Claude Desktop sends.
 
 It also smooths over the awkward bits:
 
@@ -36,7 +36,7 @@ This is the path most users want: no Anthropic credit card needed.
    npm run build:mcpb
    ```
 
-   Output: `dist/claude-model-proxy-0.2.0.mcpb`.
+   Output: `dist/claude-model-proxy-0.3.0.mcpb`.
 
 3. In Claude Desktop: **Settings → Extensions / Connectors → Advanced settings
    → Install Extension** → pick the `.mcpb`. In the install dialog:
@@ -48,6 +48,8 @@ This is the path most users want: no Anthropic credit card needed.
    | Default Provider | `ollama` |
    | Ollama Cloud Base URL | `https://ollama.com/v1` (default) |
    | Ollama Cloud API Key | *your key* |
+   | HuggingFace Router Base URL | `https://router.huggingface.co/v1` (default) |
+   | HuggingFace API Token | *optional — fill in if you also want `claude-hf-*` models* |
    | Claude Haiku Fallback Alias | `claude-ollama-qwen3-coder-next` (default) |
    | Claude Sonnet Fallback Alias | `claude-ollama-qwen3-coder` (default) |
    | Claude Opus Fallback Alias | `claude-ollama-gpt-oss-120b` (default) |
@@ -62,14 +64,42 @@ This is the path most users want: no Anthropic credit card needed.
    | Gateway base URL | `http://127.0.0.1:8787` |
    | Gateway API key | any non-empty placeholder (e.g. `dummy-claude-model-proxy`) |
    | Gateway auth scheme | `bearer` |
-   | Model list | *Fetch from gateway* — the proxy auto-populates 62 models |
+   | Model list | *Fetch from gateway* — the proxy auto-populates 84 models |
 
-5. Open a new chat, pick e.g. `claude-ollama-qwen3-coder`, and start coding.
+5. Open a new chat, pick e.g. `claude-ollama-qwen3-coder` (Ollama) or
+   `claude-hf-llama-3.3-70b` (HuggingFace), and start coding.
 
    Anything Claude Desktop sends in the background with a `claude-haiku-*` /
    `claude-sonnet-*` / `claude-opus-*` model — including dated variants like
-   `claude-haiku-4-5-20251001` — is auto-routed to the configured Ollama fallback,
-   so you don't need an Anthropic key for the app to function.
+   `claude-haiku-4-5-20251001` — is auto-routed to the configured Ollama
+   fallback, so you don't need an Anthropic key for the app to function.
+
+## Adding HuggingFace alongside Ollama
+
+The HuggingFace Inference Router is a hosted, OpenAI-compatible endpoint at
+`https://router.huggingface.co/v1` that auto-routes to whichever underlying
+inference provider currently has the model live (Together, Fireworks, HF
+Inference, Hyperbolic, SambaNova, Novita, Nebius, …). One HF token gives you
+all of them.
+
+1. Create a token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+   (a read-only fine-grained token is enough — no special scopes needed).
+2. Paste it into the MCPB install dialog's **HuggingFace API Token** field
+   (or set `HUGGINGFACE_API_KEY` / `HF_API_KEY` / `HF_TOKEN` in `.env` for
+   standalone mode). The Ollama key can stay set at the same time.
+3. The model dropdown in Claude Desktop now shows `claude-hf-*` aliases
+   alongside `claude-ollama-*` ones — pick whichever you want per chat.
+   Streaming, system messages, and image content all work the same way.
+
+To make the auto-fallback for `claude-haiku-*` / `claude-sonnet-*` /
+`claude-opus-*` use HuggingFace instead of Ollama, override the fallback
+fields:
+
+| Claude family | Suggested HF alias |
+| --- | --- |
+| Haiku | `claude-hf-llama-3.1-8b` |
+| Sonnet | `claude-hf-qwen-2.5-coder-32b` |
+| Opus | `claude-hf-llama-3.1-405b` |
 
 ## Standalone (no MCPB)
 
@@ -142,11 +172,35 @@ npm start
 | `claude-ollama-gemma4-31b` | Ollama Cloud | `gemma4:31b-cloud` |
 | `claude-ollama-gemini-3-flash-preview` | Ollama Cloud | `gemini-3-flash-preview:cloud` |
 | `claude-ollama-rnj-1` | Ollama Cloud | `rnj-1:8b-cloud` |
+| `claude-hf-llama-3.3-70b` | HuggingFace Router | `meta-llama/Llama-3.3-70B-Instruct` |
+| `claude-hf-llama-3.1-405b` | HuggingFace Router | `meta-llama/Llama-3.1-405B-Instruct` |
+| `claude-hf-llama-3.1-70b` | HuggingFace Router | `meta-llama/Llama-3.1-70B-Instruct` |
+| `claude-hf-llama-3.1-8b` | HuggingFace Router | `meta-llama/Llama-3.1-8B-Instruct` |
+| `claude-hf-qwen-2.5-72b` | HuggingFace Router | `Qwen/Qwen2.5-72B-Instruct` |
+| `claude-hf-qwen-2.5-coder-32b` | HuggingFace Router | `Qwen/Qwen2.5-Coder-32B-Instruct` |
+| `claude-hf-qwen-3-coder-480b` | HuggingFace Router | `Qwen/Qwen3-Coder-480B-A35B-Instruct` |
+| `claude-hf-qwen-3-235b` | HuggingFace Router | `Qwen/Qwen3-235B-A22B` |
+| `claude-hf-deepseek-v3` | HuggingFace Router | `deepseek-ai/DeepSeek-V3` |
+| `claude-hf-deepseek-v3.1` | HuggingFace Router | `deepseek-ai/DeepSeek-V3.1` |
+| `claude-hf-deepseek-r1` | HuggingFace Router | `deepseek-ai/DeepSeek-R1` |
+| `claude-hf-deepseek-r1-distill-llama-70b` | HuggingFace Router | `deepseek-ai/DeepSeek-R1-Distill-Llama-70B` |
+| `claude-hf-mistral-large-2411` | HuggingFace Router | `mistralai/Mistral-Large-Instruct-2411` |
+| `claude-hf-mixtral-8x7b` | HuggingFace Router | `mistralai/Mixtral-8x7B-Instruct-v0.1` |
+| `claude-hf-mistral-7b` | HuggingFace Router | `mistralai/Mistral-7B-Instruct-v0.3` |
+| `claude-hf-gemma-2-27b` | HuggingFace Router | `google/gemma-2-27b-it` |
+| `claude-hf-gemma-2-9b` | HuggingFace Router | `google/gemma-2-9b-it` |
+| `claude-hf-phi-4` | HuggingFace Router | `microsoft/phi-4` |
+| `claude-hf-phi-3-medium` | HuggingFace Router | `microsoft/Phi-3-medium-128k-instruct` |
+| `claude-hf-command-r-plus` | HuggingFace Router | `CohereForAI/c4ai-command-r-plus` |
+| `claude-hf-yi-1.5-34b` | HuggingFace Router | `01-ai/Yi-1.5-34B-Chat` |
+| `claude-hf-nemotron-70b` | HuggingFace Router | `nvidia/Llama-3.1-Nemotron-70B-Instruct-HF` |
 
 Conflict resolution: the same upstream id (e.g. `glm-4.6`) can be served by both
 Z.AI and Ollama Cloud. The proxy disambiguates by request alias, so
 `claude-glm-4.6` always goes to Z.AI and `claude-ollama-glm-4.6` always goes to
-Ollama (as `glm-4.6:cloud`).
+Ollama (as `glm-4.6:cloud`). Same idea for HF Router — every `claude-hf-*`
+alias routes to the HuggingFace provider, no matter what other providers are
+configured.
 
 The live source of truth is `curl http://127.0.0.1:8787/v1/models` against a
 running proxy.
@@ -188,6 +242,7 @@ point Sonnet at `claude-deepseek-v4-pro`, Opus at `claude-kimi-k2.6`, etc.
 | Variable | Default base URL | Notes |
 | --- | --- | --- |
 | `OLLAMA_API_KEY` | `https://ollama.com/v1` (`OLLAMA_BASE_URL`) | Get at [ollama.com/settings/keys](https://ollama.com/settings/keys). |
+| `HUGGINGFACE_API_KEY` (aliases `HF_API_KEY`, `HF_TOKEN`) | `https://router.huggingface.co/v1` (`HUGGINGFACE_BASE_URL`, `HF_BASE_URL`) | Get at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens). HF Router auto-picks the underlying inference provider. |
 | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/anthropic` | Anthropic-shape upstream. |
 | `MOONSHOT_API_KEY` (alias `KIMI_API_KEY`) | `https://api.moonshot.cn/anthropic` | Anthropic-shape upstream. |
 | `GLM_API_KEY` (aliases `ZAI_API_KEY`, `ZHIPU_API_KEY`) | `https://api.z.ai/api/anthropic` | Anthropic-shape upstream. |
@@ -275,6 +330,23 @@ If you've set `MODEL_ROUTES` in `.env`, double-check that you haven't
 overwritten the entry you care about. `curl http://127.0.0.1:8787/healthz`
 prints the effective table.
 
+**HuggingFace request 401 / "Authentication required"**
+Your HF token doesn't have inference access for the underlying provider HF
+Router picked. Either re-generate the token with broader scopes (a
+fine-grained read token usually works) or switch to a different `claude-hf-*`
+alias — HF Router maps each model to a specific upstream provider and not
+every token has access to every provider's commercial endpoints.
+
+**HuggingFace 404 "model not found"**
+The HF Router catalog rotates. Hit `curl
+https://router.huggingface.co/v1/models -H "Authorization: Bearer $HF_TOKEN"`
+to see the live list and add an override:
+
+```sh
+ADVANCED_ENV='{"MODEL_MAP":"{\"claude-hf-my-model\":\"vendor/Some-Model\"}",
+               "MODEL_ROUTES":"{\"claude-hf-my-model\":\"huggingface\"}"}'
+```
+
 ## MCP tool: `model_proxy_status`
 
 The MCPB exposes one MCP tool that lets you ask Claude about the running
@@ -304,9 +376,9 @@ claude
 
 Tool-use payloads pass through as-is to Anthropic-Messages-compatible
 providers (DeepSeek, Moonshot, GLM, Xiaomi, real Anthropic). On OpenAI / Gemini
-/ Qwen / Ollama Cloud the basic Chat Completions adapter handles text +
-images + streaming text deltas; heavy tool-driven workflows still work best
-on the Anthropic-Messages providers above.
+/ Qwen / Ollama Cloud / HuggingFace Router the basic Chat Completions adapter
+handles text + images + streaming text deltas; heavy tool-driven workflows
+still work best on the Anthropic-Messages providers above.
 
 ## macOS LaunchAgent (avoid the startup warning)
 
@@ -337,7 +409,7 @@ npm run launch-agent:uninstall
 ├── server/index.mjs           # MCP stdio server that hosts the proxy
 ├── scripts/                   # Build, launchd, and Node helper scripts
 ├── srcs/                      # README screenshots and images
-├── test/proxy.test.mjs        # Node test suite (42 cases)
+├── test/proxy.test.mjs        # Node test suite (46 cases)
 ├── start.sh                   # Standalone launcher (POSIX)
 └── .env.example               # Configuration template
 ```
@@ -349,9 +421,14 @@ dependencies are ignored by `.gitignore`.
 
 - DeepSeek, Moonshot/Kimi, GLM, Xiaomi MiMo, and Anthropic are treated as
   Anthropic Messages-compatible upstreams (body passed through).
-- OpenAI, Gemini, Qwen, and Ollama Cloud go through the OpenAI Chat
-  Completions adapter (text + image content + streaming text deltas;
-  Anthropic tool-use blocks are converted to text only).
+- OpenAI, Gemini, Qwen, Ollama Cloud, and HuggingFace Router go through the
+  OpenAI Chat Completions adapter (text + image content + streaming text
+  deltas; Anthropic tool-use blocks are converted to text only).
 - Ollama Cloud's OpenAI-compatible surface is officially experimental.
   If a future Ollama release breaks the chunk shape we decode, drop `stream`
   to `false` for a quick workaround.
+- HuggingFace Router fronts a rotating set of underlying providers (Together,
+  Fireworks, HF Inference, Hyperbolic, SambaNova, Novita, Nebius, …). One
+  token gives you all of them, and HF picks the cheapest live one for each
+  call. Catalog changes happen often; pin a specific model via `MODEL_MAP`
+  override if you need stability.

@@ -1,6 +1,6 @@
 {
   "name": "claude-model-proxy",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local Claude Desktop gateway proxy that routes Claude-style model names to multiple upstream providers.",
   "private": true,
   "type": "module",
@@ -17,6 +17,10 @@
     "mimo",
     "openai",
     "gemini",
+    "qwen",
+    "ollama",
+    "huggingface",
+    "hf",
     "anthropic"
   ],
   "scripts": {
