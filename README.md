@@ -27,34 +27,36 @@ Ollama Cloud (Turbo), or Anthropic upstreams. The default mappings are:
 | `claude-gemini-3.1-flash-lite-preview` | Gemini | `gemini-3.1-flash-lite-preview` |
 | `claude-gemini-3-flash-preview` | Gemini | `gemini-3-flash-preview` |
 | `claude-gemini-3.1-pro-preview` | Gemini | `gemini-3.1-pro-preview` |
-| `claude-ollama-gpt-oss-20b` | Ollama Cloud | `gpt-oss:20b` |
-| `claude-ollama-gpt-oss-120b` | Ollama Cloud | `gpt-oss:120b` |
-| `claude-ollama-deepseek-v3.1` | Ollama Cloud | `deepseek-v3.1:671b` |
-| `claude-ollama-deepseek-v3.2` | Ollama Cloud | `deepseek-v3.2` |
-| `claude-ollama-qwen3-coder` | Ollama Cloud | `qwen3-coder:480b` |
-| `claude-ollama-qwen3-coder-next` | Ollama Cloud | `qwen3-coder-next` |
-| `claude-ollama-qwen3-vl` | Ollama Cloud | `qwen3-vl:235b` |
-| `claude-ollama-qwen3-next` | Ollama Cloud | `qwen3-next:80b` |
-| `claude-ollama-qwen3.5` | Ollama Cloud | `qwen3.5:122b` |
-| `claude-ollama-kimi-k2` | Ollama Cloud | `kimi-k2:1t` |
-| `claude-ollama-kimi-k2-thinking` | Ollama Cloud | `kimi-k2-thinking` |
-| `claude-ollama-kimi-k2.6` | Ollama Cloud | `kimi-k2.6` |
-| `claude-ollama-glm-4.6` | Ollama Cloud | `glm-4.6` |
-| `claude-ollama-glm-4.7` | Ollama Cloud | `glm-4.7` |
-| `claude-ollama-glm-5` | Ollama Cloud | `glm-5` |
-| `claude-ollama-glm-5.1` | Ollama Cloud | `glm-5.1` |
-| `claude-ollama-minimax-m2` | Ollama Cloud | `minimax-m2` |
-| `claude-ollama-minimax-m2.1` | Ollama Cloud | `minimax-m2.1` |
-| `claude-ollama-minimax-m2.5` | Ollama Cloud | `minimax-m2.5` |
-| `claude-ollama-minimax-m2.7` | Ollama Cloud | `minimax-m2.7` |
-| `claude-ollama-nemotron-3-nano` | Ollama Cloud | `nemotron-3-nano:30b` |
-| `claude-ollama-nemotron-3-super` | Ollama Cloud | `nemotron-3-super:120b` |
-| `claude-ollama-devstral-small-2` | Ollama Cloud | `devstral-small-2:24b` |
-| `claude-ollama-ministral-3` | Ollama Cloud | `ministral-3:8b` |
-| `claude-ollama-gemma4-26b` | Ollama Cloud | `gemma4:26b` |
-| `claude-ollama-gemma4-31b` | Ollama Cloud | `gemma4:31b` |
-| `claude-ollama-gemini-3-flash-preview` | Ollama Cloud | `gemini-3-flash-preview` |
-| `claude-ollama-rnj-1` | Ollama Cloud | `rnj-1:8b` |
+| `claude-ollama-gpt-oss-20b` | Ollama Cloud | `gpt-oss:20b-cloud` |
+| `claude-ollama-gpt-oss-120b` | Ollama Cloud | `gpt-oss:120b-cloud` |
+| `claude-ollama-deepseek-v3.1` | Ollama Cloud | `deepseek-v3.1:671b-cloud` |
+| `claude-ollama-deepseek-v3.2` | Ollama Cloud | `deepseek-v3.2:cloud` |
+| `claude-ollama-deepseek-v4-flash` (alias `claude-dsv4-flash`) | Ollama Cloud | `deepseek-v4-flash:cloud` |
+| `claude-ollama-deepseek-v4-pro` (alias `claude-dsv4-pro`) | Ollama Cloud | `deepseek-v4-pro:cloud` |
+| `claude-ollama-qwen3-coder` | Ollama Cloud | `qwen3-coder:480b-cloud` |
+| `claude-ollama-qwen3-coder-next` | Ollama Cloud | `qwen3-coder-next:cloud` |
+| `claude-ollama-qwen3-vl` | Ollama Cloud | `qwen3-vl:235b-cloud` |
+| `claude-ollama-qwen3-vl-instruct` | Ollama Cloud | `qwen3-vl:235b-instruct-cloud` |
+| `claude-ollama-qwen3-next` | Ollama Cloud | `qwen3-next:80b-cloud` |
+| `claude-ollama-qwen3.5` | Ollama Cloud | `qwen3.5:cloud` |
+| `claude-ollama-kimi-k2` | Ollama Cloud | `kimi-k2:1t-cloud` |
+| `claude-ollama-kimi-k2-thinking` | Ollama Cloud | `kimi-k2-thinking:cloud` |
+| `claude-ollama-kimi-k2.6` | Ollama Cloud | `kimi-k2.6:cloud` |
+| `claude-ollama-glm-4.6` | Ollama Cloud | `glm-4.6:cloud` |
+| `claude-ollama-glm-4.7` | Ollama Cloud | `glm-4.7:cloud` |
+| `claude-ollama-glm-5` | Ollama Cloud | `glm-5:cloud` |
+| `claude-ollama-glm-5.1` (alias `claude-glm51`) | Ollama Cloud | `glm-5.1:cloud` |
+| `claude-ollama-minimax-m2` | Ollama Cloud | `minimax-m2:cloud` |
+| `claude-ollama-minimax-m2.1` | Ollama Cloud | `minimax-m2.1:cloud` |
+| `claude-ollama-minimax-m2.5` | Ollama Cloud | `minimax-m2.5:cloud` |
+| `claude-ollama-minimax-m2.7` | Ollama Cloud | `minimax-m2.7:cloud` |
+| `claude-ollama-nemotron-3-nano` | Ollama Cloud | `nemotron-3-nano:30b-cloud` |
+| `claude-ollama-nemotron-3-super` | Ollama Cloud | `nemotron-3-super:cloud` |
+| `claude-ollama-devstral-small-2` | Ollama Cloud | `devstral-small-2:24b-cloud` |
+| `claude-ollama-ministral-3` | Ollama Cloud | `ministral-3:8b-cloud` |
+| `claude-ollama-gemma4-31b` | Ollama Cloud | `gemma4:31b-cloud` |
+| `claude-ollama-gemini-3-flash-preview` | Ollama Cloud | `gemini-3-flash-preview:cloud` |
+| `claude-ollama-rnj-1` | Ollama Cloud | `rnj-1:8b-cloud` |
 
 The `Claude model` value is both the request model and the default response
 alias. When multiple request aliases share one upstream model, responses are
@@ -67,10 +69,12 @@ Qwen, and Ollama Cloud models are not supported by the Anthropic provider.
 Ollama Cloud (Turbo) hosts the models listed above on ollama.com and does **not**
 require a local Ollama install. Sign in at
 [ollama.com/settings/keys](https://ollama.com/settings/keys) to mint
-`OLLAMA_API_KEY`. The `glm-4.6` upstream name is served by both Z.AI and
-Ollama; the proxy disambiguates by the request alias, so
-`claude-glm-4.6` always goes to Z.AI and `claude-ollama-glm-4.6` always goes to
-Ollama.
+`OLLAMA_API_KEY`. Every Ollama upstream id uses the cloud-routing tag
+(`-cloud` for sized models, `:cloud` for unsized) — bare ids would hit local
+weights and fail on the hosted service. The `glm-4.6` upstream name is served
+by both Z.AI (as `glm-4.6`) and Ollama Cloud (as `glm-4.6:cloud`); the proxy
+disambiguates by the request alias, so `claude-glm-4.6` always goes to Z.AI and
+`claude-ollama-glm-4.6` always goes to Ollama.
 
 ## Requirements
 
@@ -372,6 +376,41 @@ The output is:
 dist/claude-model-proxy-0.1.0.mcpb
 ```
 
+### Step-by-step Claude Desktop setup
+
+1. **Enable Developer Mode in Claude Desktop.** Open Claude Desktop ->
+   Settings -> General. If you do not see "Developer Mode" or "Extensions",
+   open Help -> Enable Developer Mode (varies by build) and restart the app.
+2. **Install the MCPB extension.** Settings -> Extensions / Connectors ->
+   Advanced settings -> Install Extension -> select the
+   `dist/claude-model-proxy-<version>.mcpb` file from the build step above.
+3. **Fill in the install dialog.** At minimum, paste your `OLLAMA_API_KEY`
+   (from [ollama.com/settings/keys](https://ollama.com/settings/keys)) plus
+   `DEEPSEEK_API_KEY` and `MOONSHOT_API_KEY` if you plan to use those
+   providers. Leave any provider's key blank if you do not want to use it.
+   Other providers (GLM, Xiaomi, OpenAI, Gemini, Qwen, Anthropic) go in the
+   **Optional Advanced Settings JSON** field — see the bottom of this README.
+4. **Verify the proxy is up.** Open a terminal and run
+   `curl http://127.0.0.1:8787/v1/models`. You should see a JSON list of
+   `claude-*` model ids. If you get connection refused, give Claude Desktop a
+   few seconds to start the extension process and try again.
+5. **Point Claude Desktop's gateway at the proxy.** Settings -> Developer
+   Mode -> Third-party inference -> Gateway. Use:
+   - **Provider:** `Gateway`
+   - **Gateway base URL:** `http://127.0.0.1:8787`
+   - **Gateway API key:** any non-empty placeholder (e.g.
+     `dummy-claude-model-proxy`)
+   - **Gateway auth scheme:** `bearer`
+   - **Model list:** prefer **Fetch from gateway** — the proxy returns the
+     Anthropic-compatible catalog (`id`, `type`, `display_name`, `created_at`)
+     and the dropdown populates automatically. If your build of Claude Desktop
+     does not auto-fetch, paste the Claude-style ids you want from the table
+     above (one per line).
+6. **Pick a model.** Open a new chat and select one of the proxy models from
+   the dropdown — for example `claude-ollama-gpt-oss-120b` or
+   `claude-deepseek-v4-pro`. If the dropdown is empty, see the troubleshooting
+   block below.
+
 Install it in Claude Desktop from Settings -> Extensions / Connectors ->
 Advanced settings -> Install Extension. During first installation, fill in the
 gateway URL, local port, DeepSeek credentials, Moonshot/Kimi credentials, and
@@ -397,13 +436,27 @@ Use these values:
 - Gateway API key: any non-empty placeholder, for example
   `dummy-claude-model-proxy`
 - Gateway auth scheme: `bearer`
-- Model list: add the Claude-style request model names you want to expose, such
-  as `claude-deepseek-v4-flash`, `claude-deepseek-v4-pro`,
-  `claude-kimi-k2.6`, `claude-qwen-flash`, `claude-qwen-plus`,
-  `claude-qwen-max`, or any of the Ollama Cloud aliases like
-  `claude-ollama-gpt-oss-20b`, `claude-ollama-gpt-oss-120b`,
-  `claude-ollama-qwen3-coder`, `claude-ollama-deepseek-v3.1`, and
-  `claude-ollama-kimi-k2`
+- Model list: leave the field on **Fetch from gateway** so Claude Desktop reads
+  the model catalog from `/v1/models` directly. The proxy now returns a
+  fully-Anthropic-compatible model list (`id`, `type`, `display_name`,
+  `created_at`), so the model dropdown is populated automatically. If your
+  Claude Desktop build does not support auto-fetch, paste the Claude-style
+  request model names manually — for example,
+  `claude-deepseek-v4-flash`, `claude-deepseek-v4-pro`, `claude-kimi-k2.6`,
+  `claude-qwen-flash`, `claude-qwen-plus`, `claude-qwen-max`, or any
+  Ollama Cloud aliases such as `claude-ollama-gpt-oss-20b`,
+  `claude-ollama-gpt-oss-120b`, `claude-ollama-qwen3-coder`,
+  `claude-ollama-deepseek-v3.1`, `claude-ollama-kimi-k2`, or the short forms
+  `claude-dsv4-flash`, `claude-dsv4-pro`, `claude-glm51`.
+
+> **If the model selection dropdown is empty after install:** click
+> **Check again** / **Refresh** in the gateway settings. The MCPB extension
+> needs the proxy process to be listening before Claude Desktop probes
+> `/v1/models`. If the dropdown is still empty, verify the proxy is up with
+> `curl http://127.0.0.1:8787/v1/models` — you should see the JSON catalog of
+> `claude-*` ids. If that works but Claude Desktop still shows no models,
+> ensure Developer Mode is on, the Gateway API key field is non-empty (any
+> placeholder is fine), and the auth scheme is `bearer`.
 
 Provider API keys are configured in the extension installer or environment
 variables, not in the Gateway API key field.

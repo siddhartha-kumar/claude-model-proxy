@@ -32,44 +32,52 @@ export const DEFAULT_MODEL_MAP = Object.freeze({
   'claude-qwen-plus': 'qwen-plus',
   'claude-qwen-max': 'qwen-max',
   // Ollama Cloud (Turbo) — hosted at ollama.com, no local install required.
+  // Cloud-routing tags: `-cloud` for sized models, `:cloud` for unsized.
+  // Bare ids would hit local Ollama weights and fail on the hosted service.
   // gpt-oss
-  'claude-ollama-gpt-oss-20b': 'gpt-oss:20b',
-  'claude-ollama-gpt-oss-120b': 'gpt-oss:120b',
+  'claude-ollama-gpt-oss-20b': 'gpt-oss:20b-cloud',
+  'claude-ollama-gpt-oss-120b': 'gpt-oss:120b-cloud',
   // DeepSeek
-  'claude-ollama-deepseek-v3.1': 'deepseek-v3.1:671b',
-  'claude-ollama-deepseek-v3.2': 'deepseek-v3.2',
+  'claude-ollama-deepseek-v3.1': 'deepseek-v3.1:671b-cloud',
+  'claude-ollama-deepseek-v3.2': 'deepseek-v3.2:cloud',
+  'claude-ollama-deepseek-v4-flash': 'deepseek-v4-flash:cloud',
+  'claude-ollama-deepseek-v4-pro': 'deepseek-v4-pro:cloud',
   // Qwen
-  'claude-ollama-qwen3-coder': 'qwen3-coder:480b',
-  'claude-ollama-qwen3-coder-next': 'qwen3-coder-next',
-  'claude-ollama-qwen3-vl': 'qwen3-vl:235b',
-  'claude-ollama-qwen3-next': 'qwen3-next:80b',
-  'claude-ollama-qwen3.5': 'qwen3.5:122b',
+  'claude-ollama-qwen3-coder': 'qwen3-coder:480b-cloud',
+  'claude-ollama-qwen3-coder-next': 'qwen3-coder-next:cloud',
+  'claude-ollama-qwen3-vl': 'qwen3-vl:235b-cloud',
+  'claude-ollama-qwen3-vl-instruct': 'qwen3-vl:235b-instruct-cloud',
+  'claude-ollama-qwen3-next': 'qwen3-next:80b-cloud',
+  'claude-ollama-qwen3.5': 'qwen3.5:cloud',
   // Kimi (Moonshot)
-  'claude-ollama-kimi-k2': 'kimi-k2:1t',
-  'claude-ollama-kimi-k2-thinking': 'kimi-k2-thinking',
-  'claude-ollama-kimi-k2.6': 'kimi-k2.6',
+  'claude-ollama-kimi-k2': 'kimi-k2:1t-cloud',
+  'claude-ollama-kimi-k2-thinking': 'kimi-k2-thinking:cloud',
+  'claude-ollama-kimi-k2.6': 'kimi-k2.6:cloud',
   // GLM (Zhipu)
-  'claude-ollama-glm-4.6': 'glm-4.6',
-  'claude-ollama-glm-4.7': 'glm-4.7',
-  'claude-ollama-glm-5': 'glm-5',
-  'claude-ollama-glm-5.1': 'glm-5.1',
+  'claude-ollama-glm-4.6': 'glm-4.6:cloud',
+  'claude-ollama-glm-4.7': 'glm-4.7:cloud',
+  'claude-ollama-glm-5': 'glm-5:cloud',
+  'claude-ollama-glm-5.1': 'glm-5.1:cloud',
   // MiniMax
-  'claude-ollama-minimax-m2': 'minimax-m2',
-  'claude-ollama-minimax-m2.1': 'minimax-m2.1',
-  'claude-ollama-minimax-m2.5': 'minimax-m2.5',
-  'claude-ollama-minimax-m2.7': 'minimax-m2.7',
+  'claude-ollama-minimax-m2': 'minimax-m2:cloud',
+  'claude-ollama-minimax-m2.1': 'minimax-m2.1:cloud',
+  'claude-ollama-minimax-m2.5': 'minimax-m2.5:cloud',
+  'claude-ollama-minimax-m2.7': 'minimax-m2.7:cloud',
   // NVIDIA Nemotron
-  'claude-ollama-nemotron-3-nano': 'nemotron-3-nano:30b',
-  'claude-ollama-nemotron-3-super': 'nemotron-3-super:120b',
+  'claude-ollama-nemotron-3-nano': 'nemotron-3-nano:30b-cloud',
+  'claude-ollama-nemotron-3-super': 'nemotron-3-super:cloud',
   // Mistral / Devstral
-  'claude-ollama-devstral-small-2': 'devstral-small-2:24b',
-  'claude-ollama-ministral-3': 'ministral-3:8b',
+  'claude-ollama-devstral-small-2': 'devstral-small-2:24b-cloud',
+  'claude-ollama-ministral-3': 'ministral-3:8b-cloud',
   // Google
-  'claude-ollama-gemma4-26b': 'gemma4:26b',
-  'claude-ollama-gemma4-31b': 'gemma4:31b',
-  'claude-ollama-gemini-3-flash-preview': 'gemini-3-flash-preview',
+  'claude-ollama-gemma4-31b': 'gemma4:31b-cloud',
+  'claude-ollama-gemini-3-flash-preview': 'gemini-3-flash-preview:cloud',
   // Other
-  'claude-ollama-rnj-1': 'rnj-1:8b',
+  'claude-ollama-rnj-1': 'rnj-1:8b-cloud',
+  // Short aliases pointing at popular Ollama Cloud upstreams.
+  'claude-dsv4-flash': 'deepseek-v4-flash:cloud',
+  'claude-dsv4-pro': 'deepseek-v4-pro:cloud',
+  'claude-glm51': 'glm-5.1:cloud',
   'claude-haiku-4-5': 'claude-haiku-4-5',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
   'claude-opus-4-7': 'claude-opus-4-7',
@@ -102,31 +110,40 @@ export const DEFAULT_MODEL_ALIASES = Object.freeze({
   'qwen-flash': 'claude-qwen-flash',
   'qwen-plus': 'claude-qwen-plus',
   'qwen-max': 'claude-qwen-max',
-  // Ollama Cloud upstream → Claude alias (only non-conflicting upstream names;
-  // conflicting ones like glm-4.6/kimi-k2.6 keep the existing provider alias
-  // and rely on per-request response rewriting for the Ollama variant.)
-  'gpt-oss:20b': 'claude-ollama-gpt-oss-20b',
-  'gpt-oss:120b': 'claude-ollama-gpt-oss-120b',
-  'deepseek-v3.1:671b': 'claude-ollama-deepseek-v3.1',
-  'deepseek-v3.2': 'claude-ollama-deepseek-v3.2',
-  'qwen3-coder:480b': 'claude-ollama-qwen3-coder',
-  'qwen3-coder-next': 'claude-ollama-qwen3-coder-next',
-  'qwen3-vl:235b': 'claude-ollama-qwen3-vl',
-  'qwen3-next:80b': 'claude-ollama-qwen3-next',
-  'qwen3.5:122b': 'claude-ollama-qwen3.5',
-  'kimi-k2:1t': 'claude-ollama-kimi-k2',
-  'kimi-k2-thinking': 'claude-ollama-kimi-k2-thinking',
-  'minimax-m2': 'claude-ollama-minimax-m2',
-  'minimax-m2.1': 'claude-ollama-minimax-m2.1',
-  'minimax-m2.5': 'claude-ollama-minimax-m2.5',
-  'minimax-m2.7': 'claude-ollama-minimax-m2.7',
-  'nemotron-3-nano:30b': 'claude-ollama-nemotron-3-nano',
-  'nemotron-3-super:120b': 'claude-ollama-nemotron-3-super',
-  'devstral-small-2:24b': 'claude-ollama-devstral-small-2',
-  'ministral-3:8b': 'claude-ollama-ministral-3',
-  'gemma4:26b': 'claude-ollama-gemma4-26b',
-  'gemma4:31b': 'claude-ollama-gemma4-31b',
-  'rnj-1:8b': 'claude-ollama-rnj-1',
+  // Ollama Cloud upstream → Claude alias. Where multiple aliases share an
+  // upstream id (e.g. claude-ollama-deepseek-v4-flash and claude-dsv4-flash
+  // both map to deepseek-v4-flash:cloud), buildResponseModelMap restores the
+  // request alias used for that call; this table is the default fallback.
+  'gpt-oss:20b-cloud': 'claude-ollama-gpt-oss-20b',
+  'gpt-oss:120b-cloud': 'claude-ollama-gpt-oss-120b',
+  'deepseek-v3.1:671b-cloud': 'claude-ollama-deepseek-v3.1',
+  'deepseek-v3.2:cloud': 'claude-ollama-deepseek-v3.2',
+  'deepseek-v4-flash:cloud': 'claude-dsv4-flash',
+  'deepseek-v4-pro:cloud': 'claude-dsv4-pro',
+  'qwen3-coder:480b-cloud': 'claude-ollama-qwen3-coder',
+  'qwen3-coder-next:cloud': 'claude-ollama-qwen3-coder-next',
+  'qwen3-vl:235b-cloud': 'claude-ollama-qwen3-vl',
+  'qwen3-vl:235b-instruct-cloud': 'claude-ollama-qwen3-vl-instruct',
+  'qwen3-next:80b-cloud': 'claude-ollama-qwen3-next',
+  'qwen3.5:cloud': 'claude-ollama-qwen3.5',
+  'kimi-k2:1t-cloud': 'claude-ollama-kimi-k2',
+  'kimi-k2-thinking:cloud': 'claude-ollama-kimi-k2-thinking',
+  'kimi-k2.6:cloud': 'claude-ollama-kimi-k2.6',
+  'glm-4.6:cloud': 'claude-ollama-glm-4.6',
+  'glm-4.7:cloud': 'claude-ollama-glm-4.7',
+  'glm-5:cloud': 'claude-ollama-glm-5',
+  'glm-5.1:cloud': 'claude-glm51',
+  'minimax-m2:cloud': 'claude-ollama-minimax-m2',
+  'minimax-m2.1:cloud': 'claude-ollama-minimax-m2.1',
+  'minimax-m2.5:cloud': 'claude-ollama-minimax-m2.5',
+  'minimax-m2.7:cloud': 'claude-ollama-minimax-m2.7',
+  'nemotron-3-nano:30b-cloud': 'claude-ollama-nemotron-3-nano',
+  'nemotron-3-super:cloud': 'claude-ollama-nemotron-3-super',
+  'devstral-small-2:24b-cloud': 'claude-ollama-devstral-small-2',
+  'ministral-3:8b-cloud': 'claude-ollama-ministral-3',
+  'gemma4:31b-cloud': 'claude-ollama-gemma4-31b',
+  'gemini-3-flash-preview:cloud': 'claude-ollama-gemini-3-flash-preview',
+  'rnj-1:8b-cloud': 'claude-ollama-rnj-1',
   'claude-haiku-4-5': 'claude-haiku-4-5',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
   'claude-opus-4-7': 'claude-opus-4-7',
@@ -163,9 +180,12 @@ export const DEFAULT_MODEL_ROUTES = Object.freeze({
   'claude-ollama-gpt-oss-120b': 'ollama',
   'claude-ollama-deepseek-v3.1': 'ollama',
   'claude-ollama-deepseek-v3.2': 'ollama',
+  'claude-ollama-deepseek-v4-flash': 'ollama',
+  'claude-ollama-deepseek-v4-pro': 'ollama',
   'claude-ollama-qwen3-coder': 'ollama',
   'claude-ollama-qwen3-coder-next': 'ollama',
   'claude-ollama-qwen3-vl': 'ollama',
+  'claude-ollama-qwen3-vl-instruct': 'ollama',
   'claude-ollama-qwen3-next': 'ollama',
   'claude-ollama-qwen3.5': 'ollama',
   'claude-ollama-kimi-k2': 'ollama',
@@ -183,10 +203,12 @@ export const DEFAULT_MODEL_ROUTES = Object.freeze({
   'claude-ollama-nemotron-3-super': 'ollama',
   'claude-ollama-devstral-small-2': 'ollama',
   'claude-ollama-ministral-3': 'ollama',
-  'claude-ollama-gemma4-26b': 'ollama',
   'claude-ollama-gemma4-31b': 'ollama',
   'claude-ollama-gemini-3-flash-preview': 'ollama',
   'claude-ollama-rnj-1': 'ollama',
+  'claude-dsv4-flash': 'ollama',
+  'claude-dsv4-pro': 'ollama',
+  'claude-glm51': 'ollama',
   'claude-haiku-4-5': 'anthropic',
   'claude-sonnet-4-6': 'anthropic',
   'claude-opus-4-7': 'anthropic',
@@ -427,14 +449,34 @@ function handleModelsRequest(req, res, config) {
   sendJson(res, 200, model);
 }
 
+const MODELS_CREATED_AT = '2026-01-01T00:00:00Z';
+
 function listConfiguredModels(config) {
   return Object.keys(config.modelMap)
     .sort()
     .map((id) => ({
-      id,
       type: 'model',
-      display_name: id,
+      id,
+      display_name: toModelDisplayName(id),
+      created_at: MODELS_CREATED_AT,
     }));
+}
+
+function toModelDisplayName(id) {
+  const stripped = id.replace(/^claude-/, '');
+  return stripped
+    .split('-')
+    .filter(Boolean)
+    .map((segment) => {
+      if (!segment) {
+        return segment;
+      }
+      if (/^v?\d/.test(segment)) {
+        return segment;
+      }
+      return segment[0].toUpperCase() + segment.slice(1);
+    })
+    .join(' ');
 }
 
 function prepareRequest(rawBody, contentType, config) {

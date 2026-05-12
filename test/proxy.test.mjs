@@ -443,7 +443,7 @@ test('routes Ollama Cloud requests through OpenAI-compatible endpoint', async (t
     });
     res.end(JSON.stringify({
       id: 'chatcmpl_ollama',
-      model: 'gpt-oss:120b',
+      model: 'gpt-oss:120b-cloud',
       choices: [
         {
           finish_reason: 'stop',
@@ -480,7 +480,7 @@ test('routes Ollama Cloud requests through OpenAI-compatible endpoint', async (t
   const parsedUpstreamBody = JSON.parse(upstreamBody);
   assert.equal(upstreamPath, '/v1/chat/completions');
   assert.equal(upstreamAuthorization, 'Bearer ollama-test-key');
-  assert.equal(parsedUpstreamBody.model, 'gpt-oss:120b');
+  assert.equal(parsedUpstreamBody.model, 'gpt-oss:120b-cloud');
   assert.equal(parsedUpstreamBody.max_tokens, 64);
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.model, 'claude-ollama-gpt-oss-120b');
@@ -501,7 +501,7 @@ test('routes Ollama Cloud glm-4.6 to Ollama provider, not Z.AI, when the Claude 
     });
     res.end(JSON.stringify({
       id: 'chatcmpl_ollama_glm',
-      model: 'glm-4.6',
+      model: 'glm-4.6:cloud',
       choices: [
         {
           finish_reason: 'stop',
@@ -555,7 +555,7 @@ test('routes Ollama Cloud glm-4.6 to Ollama provider, not Z.AI, when the Claude 
 
   assert.deepEqual(seen.map((item) => item.provider), ['ollama', 'glm']);
   assert.equal(seen[0].authorization, 'Bearer ollama-test-key');
-  assert.equal(JSON.parse(seen[0].body).model, 'glm-4.6');
+  assert.equal(JSON.parse(seen[0].body).model, 'glm-4.6:cloud');
   assert.equal(seen[1].authorization, 'Bearer glm-test-key');
   assert.equal(JSON.parse(seen[1].body).model, 'glm-4.6');
   assert.equal(ollamaResponse.body.model, 'claude-ollama-glm-4.6');
@@ -870,6 +870,16 @@ test('serves configured model list for Claude Code and SDK discovery', async (t)
   assert.equal(modelResponse.statusCode, 200);
   assert.equal(modelResponse.body.id, 'claude-deepseek-v4-pro');
   assert.equal(modelResponse.body.type, 'model');
+  assert.equal(typeof modelResponse.body.display_name, 'string');
+  assert.ok(modelResponse.body.display_name.length > 0);
+  assert.match(modelResponse.body.created_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+
+  for (const model of modelsResponse.body.data) {
+    assert.equal(model.type, 'model');
+    assert.equal(typeof model.id, 'string');
+    assert.equal(typeof model.display_name, 'string');
+    assert.match(model.created_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  }
 });
 
 test('uses Anthropic-compatible provider base URLs by default', () => {
@@ -953,9 +963,12 @@ test('uses Anthropic-compatible provider base URLs by default', () => {
     'claude-ollama-gpt-oss-120b',
     'claude-ollama-deepseek-v3.1',
     'claude-ollama-deepseek-v3.2',
+    'claude-ollama-deepseek-v4-flash',
+    'claude-ollama-deepseek-v4-pro',
     'claude-ollama-qwen3-coder',
     'claude-ollama-qwen3-coder-next',
     'claude-ollama-qwen3-vl',
+    'claude-ollama-qwen3-vl-instruct',
     'claude-ollama-qwen3-next',
     'claude-ollama-qwen3.5',
     'claude-ollama-kimi-k2',
@@ -973,22 +986,26 @@ test('uses Anthropic-compatible provider base URLs by default', () => {
     'claude-ollama-nemotron-3-super',
     'claude-ollama-devstral-small-2',
     'claude-ollama-ministral-3',
-    'claude-ollama-gemma4-26b',
     'claude-ollama-gemma4-31b',
     'claude-ollama-gemini-3-flash-preview',
     'claude-ollama-rnj-1',
+    'claude-dsv4-flash',
+    'claude-dsv4-pro',
+    'claude-glm51',
   ]) {
     assert.ok(
       ollamaRoutes.includes(expected),
       `expected ${expected} to route to ollama provider`,
     );
   }
-  assert.equal(config.modelMap['claude-ollama-gpt-oss-120b'], 'gpt-oss:120b');
-  assert.equal(config.modelMap['claude-ollama-qwen3-coder'], 'qwen3-coder:480b');
-  assert.equal(config.modelMap['claude-ollama-deepseek-v3.1'], 'deepseek-v3.1:671b');
-  assert.equal(config.modelMap['claude-ollama-kimi-k2'], 'kimi-k2:1t');
-  assert.equal(config.modelMap['claude-ollama-glm-5.1'], 'glm-5.1');
-  assert.equal(config.modelMap['claude-ollama-qwen3.5'], 'qwen3.5:122b');
+  assert.equal(config.modelMap['claude-ollama-gpt-oss-120b'], 'gpt-oss:120b-cloud');
+  assert.equal(config.modelMap['claude-ollama-qwen3-coder'], 'qwen3-coder:480b-cloud');
+  assert.equal(config.modelMap['claude-ollama-deepseek-v3.1'], 'deepseek-v3.1:671b-cloud');
+  assert.equal(config.modelMap['claude-ollama-kimi-k2'], 'kimi-k2:1t-cloud');
+  assert.equal(config.modelMap['claude-ollama-glm-5.1'], 'glm-5.1:cloud');
+  assert.equal(config.modelMap['claude-ollama-qwen3.5'], 'qwen3.5:cloud');
+  assert.equal(config.modelMap['claude-dsv4-flash'], 'deepseek-v4-flash:cloud');
+  assert.equal(config.modelMap['claude-glm51'], 'glm-5.1:cloud');
   // Conflict resolution: same upstream id glm-5.1 → different providers per alias.
   assert.equal(config.modelRoutes['claude-ollama-glm-5.1'], 'ollama');
   assert.equal(config.modelRoutes['glm-5.1'], 'glm');
