@@ -1,130 +1,96 @@
-# Claude model proxy
+# Claude Model Proxy
 
-Claude Desktop can point its gateway at this proxy while requests are routed by
-model name to DeepSeek, Moonshot/Kimi, GLM, Xiaomi MiMo, OpenAI, Gemini, Qwen,
-Ollama Cloud (Turbo), or Anthropic upstreams. The default mappings are:
+A local HTTP proxy that lets Claude Desktop's **Gateway / third-party inference**
+feature talk to DeepSeek, Moonshot/Kimi, Z.AI GLM, Xiaomi MiMo, OpenAI, Gemini,
+Qwen/DashScope, Ollama Cloud (Turbo), or real Anthropic — all routed by the
+model name Claude Desktop sends.
 
-| Claude model | Upstream provider | Upstream model |
-| --- | --- | --- |
-| `claude-haiku-4-5` | Anthropic | `claude-haiku-4-5` |
-| `claude-sonnet-4-6` | Anthropic | `claude-sonnet-4-6` |
-| `claude-opus-4-7` | Anthropic | `claude-opus-4-7` |
-| `claude-deepseek-v4-flash` | DeepSeek | `deepseek-v4-flash` |
-| `claude-deepseek-v4-pro` | DeepSeek | `deepseek-v4-pro` |
-| `claude-kimi-k2.6` | Moonshot/Kimi | `kimi-k2.6` |
-| `claude-glm-4.5-air` | GLM | `glm-4.5-air` |
-| `claude-glm-4.7` | GLM | `glm-4.7` |
-| `claude-glm-5.1` | GLM | `glm-5.1` |
-| `claude-mimo-v2-flash` | Xiaomi MiMo | `mimo-v2-flash` |
-| `claude-mimo-v2-pro` | Xiaomi MiMo | `mimo-v2-pro` |
-| `claude-mimo-v2.5-pro` | Xiaomi MiMo | `mimo-v2.5-pro` |
-| `claude-qwen-flash` | Qwen | `qwen-flash` |
-| `claude-qwen-plus` | Qwen | `qwen-plus` |
-| `claude-qwen-max` | Qwen | `qwen-max` |
-| `claude-gpt-5.4-mini` | OpenAI | `gpt-5.4-mini` |
-| `claude-gpt-5.4` | OpenAI | `gpt-5.4` |
-| `claude-gpt-5.5` | OpenAI | `gpt-5.5` |
-| `claude-gemini-3.1-flash-lite-preview` | Gemini | `gemini-3.1-flash-lite-preview` |
-| `claude-gemini-3-flash-preview` | Gemini | `gemini-3-flash-preview` |
-| `claude-gemini-3.1-pro-preview` | Gemini | `gemini-3.1-pro-preview` |
-| `claude-ollama-gpt-oss-20b` | Ollama Cloud | `gpt-oss:20b-cloud` |
-| `claude-ollama-gpt-oss-120b` | Ollama Cloud | `gpt-oss:120b-cloud` |
-| `claude-ollama-deepseek-v3.1` | Ollama Cloud | `deepseek-v3.1:671b-cloud` |
-| `claude-ollama-deepseek-v3.2` | Ollama Cloud | `deepseek-v3.2:cloud` |
-| `claude-ollama-deepseek-v4-flash` (alias `claude-dsv4-flash`) | Ollama Cloud | `deepseek-v4-flash:cloud` |
-| `claude-ollama-deepseek-v4-pro` (alias `claude-dsv4-pro`) | Ollama Cloud | `deepseek-v4-pro:cloud` |
-| `claude-ollama-qwen3-coder` | Ollama Cloud | `qwen3-coder:480b-cloud` |
-| `claude-ollama-qwen3-coder-next` | Ollama Cloud | `qwen3-coder-next:cloud` |
-| `claude-ollama-qwen3-vl` | Ollama Cloud | `qwen3-vl:235b-cloud` |
-| `claude-ollama-qwen3-vl-instruct` | Ollama Cloud | `qwen3-vl:235b-instruct-cloud` |
-| `claude-ollama-qwen3-next` | Ollama Cloud | `qwen3-next:80b-cloud` |
-| `claude-ollama-qwen3.5` | Ollama Cloud | `qwen3.5:cloud` |
-| `claude-ollama-kimi-k2` | Ollama Cloud | `kimi-k2:1t-cloud` |
-| `claude-ollama-kimi-k2-thinking` | Ollama Cloud | `kimi-k2-thinking:cloud` |
-| `claude-ollama-kimi-k2.6` | Ollama Cloud | `kimi-k2.6:cloud` |
-| `claude-ollama-glm-4.6` | Ollama Cloud | `glm-4.6:cloud` |
-| `claude-ollama-glm-4.7` | Ollama Cloud | `glm-4.7:cloud` |
-| `claude-ollama-glm-5` | Ollama Cloud | `glm-5:cloud` |
-| `claude-ollama-glm-5.1` (alias `claude-glm51`) | Ollama Cloud | `glm-5.1:cloud` |
-| `claude-ollama-minimax-m2` | Ollama Cloud | `minimax-m2:cloud` |
-| `claude-ollama-minimax-m2.1` | Ollama Cloud | `minimax-m2.1:cloud` |
-| `claude-ollama-minimax-m2.5` | Ollama Cloud | `minimax-m2.5:cloud` |
-| `claude-ollama-minimax-m2.7` | Ollama Cloud | `minimax-m2.7:cloud` |
-| `claude-ollama-nemotron-3-nano` | Ollama Cloud | `nemotron-3-nano:30b-cloud` |
-| `claude-ollama-nemotron-3-super` | Ollama Cloud | `nemotron-3-super:cloud` |
-| `claude-ollama-devstral-small-2` | Ollama Cloud | `devstral-small-2:24b-cloud` |
-| `claude-ollama-ministral-3` | Ollama Cloud | `ministral-3:8b-cloud` |
-| `claude-ollama-gemma4-31b` | Ollama Cloud | `gemma4:31b-cloud` |
-| `claude-ollama-gemini-3-flash-preview` | Ollama Cloud | `gemini-3-flash-preview:cloud` |
-| `claude-ollama-rnj-1` | Ollama Cloud | `rnj-1:8b-cloud` |
+It also smooths over the awkward bits:
 
-The `Claude model` value is both the request model and the default response
-alias. When multiple request aliases share one upstream model, responses are
-rewritten back to the request alias used for that call. Provider aliases use
-`claude-` plus the actual upstream model name. The original
-Claude model names `claude-haiku-4-5`, `claude-sonnet-4-6`, and
-`claude-opus-4-7` are sent to the Anthropic provider directly. OpenAI, Gemini,
-Qwen, and Ollama Cloud models are not supported by the Anthropic provider.
+- **Anthropic-shape ↔ OpenAI-shape adapter** for OpenAI / Gemini / Qwen / Ollama
+  Cloud (JSON + streaming SSE).
+- **Smart model resolution** — Claude Desktop's internal calls like
+  `claude-haiku-4-5-20251001` (the dated alias) are normalised, and when
+  `ANTHROPIC_API_KEY` isn't set the Haiku/Sonnet/Opus families are silently
+  redirected to configurable Ollama Cloud fallbacks. So a one-key Ollama-Cloud
+  setup "just works" with everything Claude Desktop does behind the scenes
+  (title generation, token counting, etc.).
+- **Local `/v1/messages/count_tokens`** — answered with a fast heuristic so the
+  proxy doesn't have to forward an Anthropic-only endpoint to an
+  OpenAI-compatible upstream that doesn't implement it.
+- **Anthropic-compatible `/v1/models`** with `id`, `type`, `display_name`, and
+  `created_at`, so the gateway's model dropdown auto-populates.
+- **Bundled as an MCPB extension** for Claude Desktop so the proxy starts and
+  stops with the app on Windows and macOS.
 
-Ollama Cloud (Turbo) hosts the models listed above on ollama.com and does **not**
-require a local Ollama install. Sign in at
-[ollama.com/settings/keys](https://ollama.com/settings/keys) to mint
-`OLLAMA_API_KEY`. Every Ollama upstream id uses the cloud-routing tag
-(`-cloud` for sized models, `:cloud` for unsized) — bare ids would hit local
-weights and fail on the hosted service. The `glm-4.6` upstream name is served
-by both Z.AI (as `glm-4.6`) and Ollama Cloud (as `glm-4.6:cloud`); the proxy
-disambiguates by the request alias, so `claude-glm-4.6` always goes to Z.AI and
-`claude-ollama-glm-4.6` always goes to Ollama.
+## Quick start (5 minutes, Ollama Cloud only)
 
-## Requirements
+This is the path most users want: no Anthropic credit card needed.
 
-- Node.js 18 or newer
-- Claude Desktop with Gateway / third-party inference configuration
-- At least one provider API key for the models you plan to use
+1. Get a free Ollama Cloud key at
+   [ollama.com/settings/keys](https://ollama.com/settings/keys).
+2. Build the MCPB:
 
-## Run
+   ```sh
+   npm install
+   npm run build:mcpb
+   ```
 
-### macOS / Linux
+   Output: `dist/claude-model-proxy-0.2.0.mcpb`.
+
+3. In Claude Desktop: **Settings → Extensions / Connectors → Advanced settings
+   → Install Extension** → pick the `.mcpb`. In the install dialog:
+
+   | Field | Value |
+   | --- | --- |
+   | Gateway Base URL | `http://127.0.0.1:8787` |
+   | Local Proxy Port | `8787` |
+   | Default Provider | `ollama` |
+   | Ollama Cloud Base URL | `https://ollama.com/v1` (default) |
+   | Ollama Cloud API Key | *your key* |
+   | Claude Haiku Fallback Alias | `claude-ollama-qwen3-coder-next` (default) |
+   | Claude Sonnet Fallback Alias | `claude-ollama-qwen3-coder` (default) |
+   | Claude Opus Fallback Alias | `claude-ollama-gpt-oss-120b` (default) |
+   | DeepSeek / Moonshot keys | *blank* |
+   | Advanced JSON | `{}` |
+
+4. **Settings → Developer Mode → Third-party inference → Gateway**:
+
+   | Field | Value |
+   | --- | --- |
+   | Provider | `Gateway` |
+   | Gateway base URL | `http://127.0.0.1:8787` |
+   | Gateway API key | any non-empty placeholder (e.g. `dummy-claude-model-proxy`) |
+   | Gateway auth scheme | `bearer` |
+   | Model list | *Fetch from gateway* — the proxy auto-populates 62 models |
+
+5. Open a new chat, pick e.g. `claude-ollama-qwen3-coder`, and start coding.
+
+   Anything Claude Desktop sends in the background with a `claude-haiku-*` /
+   `claude-sonnet-*` / `claude-opus-*` model — including dated variants like
+   `claude-haiku-4-5-20251001` — is auto-routed to the configured Ollama fallback,
+   so you don't need an Anthropic key for the app to function.
+
+## Standalone (no MCPB)
 
 ```sh
 cp .env.example .env
-# Edit .env and fill in the provider keys you need.
-set -a
-. ./.env
-set +a
+# Edit .env — at minimum set OLLAMA_API_KEY (or whichever provider you'll use).
+npm install
 npm start
 ```
 
-If `npm start` fails with `env: node: No such file or directory`, use the
-included launcher instead. It uses the default `node` on `PATH`; if Node.js 18+
-is not available on macOS and Homebrew is installed, it attempts `brew install
-node` automatically.
+The proxy logs a startup banner showing every configured provider with a
+checkmark next to the ones that have API keys, plus the active Claude family
+fallbacks. The listening URL (`http://127.0.0.1:8787` by default) is what you
+plug into Claude Desktop's gateway settings.
 
-```sh
-export DEEPSEEK_API_KEY="sk-..."
-export MOONSHOT_API_KEY="sk-..."
-export GLM_API_KEY="sk-..."
-export XIAOMI_API_KEY="sk-..."
-export DASHSCOPE_API_KEY="sk-..."
-export OLLAMA_API_KEY="..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-export OPENAI_API_KEY="sk-..."
-export GEMINI_API_KEY="..."
-./start.sh
-```
-
-### Windows
-
-`start.sh` is a POSIX script and is not needed on Windows. Run the proxy
-directly with Node, either in PowerShell or in `cmd`. Copy `.env.example` to
-`.env` and fill in the keys you actually use, then start the proxy:
-
-PowerShell (recommended):
+### Windows PowerShell
 
 ```powershell
 Copy-Item .env.example .env
-# Edit .env and fill in only the provider keys you actually need.
-# Then export the file into the current PowerShell session:
+notepad .env
+# After saving, load .env into the current PowerShell session:
 Get-Content .env | Where-Object { $_ -match '^\s*[^#].+=' } | ForEach-Object {
   $name, $value = $_ -split '=', 2
   [Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), 'Process')
@@ -132,427 +98,235 @@ Get-Content .env | Where-Object { $_ -match '^\s*[^#].+=' } | ForEach-Object {
 npm start
 ```
 
-`cmd.exe`:
+### Windows cmd.exe
 
 ```bat
 copy .env.example .env
 notepad .env
-:: After saving the file, set the keys you need, then start the proxy:
 set OLLAMA_API_KEY=...
-set DEEPSEEK_API_KEY=sk-...
 npm start
 ```
 
-The proxy logs the listening URL on startup. Keep that terminal open while you
-use Claude Code / Claude Desktop in another window. To run as a background
-process, either install the MCPB extension (Claude Desktop will manage the
-process for you — see below) or use a Windows-native supervisor such as
-[NSSM](https://nssm.cc/) pointed at `node proxy.mjs`.
-
-`start.sh` starts the proxy in the background by default and writes
-`claude-model-proxy.pid` plus `claude-model-proxy.log`. Common commands:
-
-```sh
-./start.sh status
-./start.sh stop
-./start.sh restart
-./start.sh foreground
-```
-
-Set `CLAUDE_MODEL_PROXY_AUTO_INSTALL_NODE=0` before running `./start.sh` to
-disable automatic Homebrew install attempts.
-
-The proxy listens locally on the same URL you should configure as the gateway
-base URL:
-
-```text
-http://127.0.0.1:8787
-```
-
-## Configuration
-
-Environment variables:
-
-- `BASE_URL`: gateway-facing base URL. Default: `http://127.0.0.1:8787`.
-- `PORT`: local listen port. Default: `8787`.
-- `ADVANCED_ENV`: JSON object used by the extension installer for optional
-  provider keys and advanced overrides.
-- `DEEPSEEK_BASE_URL`: DeepSeek-compatible API base URL. Default:
-  `https://api.deepseek.com/anthropic`.
-- `DEEPSEEK_API_KEY`: DeepSeek API key.
-- `MOONSHOT_BASE_URL`: Moonshot/Kimi-compatible API base URL. Default:
-  `https://api.moonshot.cn/anthropic`.
-- `MOONSHOT_API_KEY`: Moonshot/Kimi API key.
-- `GLM_BASE_URL`: Z.AI/GLM-compatible API base URL. Default:
-  `https://api.z.ai/api/anthropic`.
-- `GLM_API_KEY`: Z.AI/GLM API key. `ZAI_API_KEY` and `ZHIPU_API_KEY` are also
-  accepted aliases.
-- `XIAOMI_BASE_URL`: Xiaomi MiMo-compatible API base URL. Default:
-  `https://api.xiaomimimo.com/anthropic`.
-- `XIAOMI_API_KEY`: Xiaomi MiMo API key. `MIMO_API_KEY` is also accepted.
-- `ANTHROPIC_BASE_URL`: Anthropic Messages API base URL. Default:
-  `https://api.anthropic.com`.
-- `OPENAI_BASE_URL`: OpenAI Chat Completions API base URL. Default:
-  `https://api.openai.com/v1`.
-- `GEMINI_BASE_URL`: Gemini OpenAI-compatible API base URL. Default:
-  `https://generativelanguage.googleapis.com/v1beta/openai`.
-- `QWEN_BASE_URL`: Qwen/DashScope OpenAI-compatible API base URL. Default:
-  `https://dashscope.aliyuncs.com/compatible-mode/v1`.
-- `OLLAMA_BASE_URL`: Ollama Cloud OpenAI-compatible base URL. Default:
-  `https://ollama.com/v1`. Do not change this unless you are routing through a
-  custom Ollama-compatible gateway; the default points at hosted Ollama Cloud
-  (Turbo) and does not require any local install.
-- `OLLAMA_API_KEY`: Ollama Cloud API key from
-  [ollama.com/settings/keys](https://ollama.com/settings/keys).
-- `ANTHROPIC_API_KEY`: Anthropic API key. Sent as `x-api-key`.
-- `OPENAI_API_KEY`: OpenAI API key.
-- `GEMINI_API_KEY`: Gemini API key. `GOOGLE_API_KEY` is also accepted.
-- `QWEN_API_KEY`: Qwen/DashScope API key (or `DASHSCOPE_API_KEY`).
-- `MODEL_MAP`: request model name -> upstream model name. JSON object or
-  `from=to,from2=to2`.
-- `MODEL_ALIASES`: upstream model name -> Claude response alias. JSON object or
-  `from=to,from2=to2`.
-- `MODEL_ROUTES`: provider routing table. Keys may be either the upstream model
-  name **or** the Claude request alias; the request-alias form wins, which is
-  how Ollama Cloud's `claude-ollama-glm-4.6` and Z.AI's `claude-glm-4.6` can
-  share the upstream id `glm-4.6` without collision. Provider names are
-  `deepseek`, `moonshot`, `glm`, `xiaomi`, `openai`, `gemini`, `qwen`,
-  `ollama`, and `anthropic`.
-- `REWRITE_RESPONSES`: set to `false` to stop rewriting response model names.
-
-Default mappings come baked into `proxy.mjs`. The table at the top of this
-README is the canonical list, and `curl http://127.0.0.1:8787/v1/models`
-against a running proxy is the live source of truth.
-
-### Adding or pruning Ollama Cloud models
-
-Ollama rotates its cloud catalog often. If a default alias 404s ("model not
-found") or you want to add a model that isn't in the table, override
-`MODEL_MAP` / `MODEL_ROUTES` via the MCPB *Optional Advanced Settings JSON*
-field, or via the `ADVANCED_ENV` env var when running from a shell:
-
-```sh
-ADVANCED_ENV='{
-  "MODEL_MAP": "{\"claude-ollama-my-new-model\":\"some-new-cloud-model:tag\"}",
-  "MODEL_ROUTES": "{\"claude-ollama-my-new-model\":\"ollama\"}"
-}'
-```
-
-Then add `claude-ollama-my-new-model` to Claude Desktop's gateway model list.
-The proxy merges these on top of the built-in defaults — anything already in
-the table keeps working.
-
-## Health check
-
-```sh
-curl http://127.0.0.1:8787/healthz
-```
-
-## Ollama Cloud (Turbo) — no local install
-
-Ollama Cloud hosts large open models on ollama.com so you can use them through
-this proxy without running `ollama` locally. To enable it:
-
-1. Sign in at [ollama.com](https://ollama.com/) and create an API key at
-   [ollama.com/settings/keys](https://ollama.com/settings/keys).
-2. Set `OLLAMA_API_KEY` for the proxy. In the MCPB installer the field is
-   labelled "Ollama Cloud API Key". From the shell, add it to `.env` or export
-   it before `npm start` / `node proxy.mjs`.
-3. Use any of the `claude-ollama-*` aliases from the table above in Claude
-   Desktop's gateway model list, or pass it to Claude Code with
-   `--model claude-ollama-gpt-oss-120b`.
-
-The proxy talks to `https://ollama.com/v1/chat/completions` over Ollama's
-OpenAI-compatible surface. Streaming, text content, and image content all work.
-Tool use is converted only at the text level — see the Claude Code section
-below for the same caveat that applies to OpenAI, Gemini, and Qwen.
-
-Quick sanity check (replace the key, keep the URL):
-
-```sh
-curl -X POST http://127.0.0.1:8787/v1/messages \
-  -H "content-type: application/json" \
-  -H "x-api-key: dummy-claude-model-proxy" \
-  -d '{
-    "model": "claude-ollama-gpt-oss-20b",
-    "max_tokens": 64,
-    "messages": [{"role": "user", "content": "say hi in one word"}]
-  }'
-```
-
-## Claude Code
-
-Claude Code can use this proxy through its Anthropic-compatible environment
-variables. Start the proxy first, then source the Claude Code client environment
-in the terminal where you run `claude`:
-
-```sh
-cp .env.claude-code.example .env.claude-code
-# Edit .env.claude-code if you want different model aliases.
-set -a
-. ./.env.claude-code
-set +a
-claude
-```
-
-The default Claude Code example maps its aliases to these proxy models:
-
-```sh
-ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-deepseek-v4-flash
-ANTHROPIC_DEFAULT_SONNET_MODEL=claude-deepseek-v4-pro
-ANTHROPIC_DEFAULT_OPUS_MODEL=claude-kimi-k2.6
-CLAUDE_CODE_SUBAGENT_MODEL=claude-deepseek-v4-flash
-ANTHROPIC_MODEL=sonnet
-```
-
-You can also start Claude Code with a specific proxy model directly:
-
-```sh
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
-ANTHROPIC_API_KEY=dummy-claude-model-proxy \
-claude --model claude-deepseek-v4-pro
-```
-
-To pin every Claude Code role at an Ollama Cloud model:
-
-```sh
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
-ANTHROPIC_API_KEY=dummy-claude-model-proxy \
-ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-ollama-gpt-oss-20b \
-ANTHROPIC_DEFAULT_SONNET_MODEL=claude-ollama-qwen3-coder \
-ANTHROPIC_DEFAULT_OPUS_MODEL=claude-ollama-gpt-oss-120b \
-CLAUDE_CODE_SUBAGENT_MODEL=claude-ollama-gpt-oss-20b \
-claude
-```
-
-On Windows in PowerShell:
-
-```powershell
-$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8787"
-$env:ANTHROPIC_API_KEY = "dummy-claude-model-proxy"
-$env:ANTHROPIC_DEFAULT_HAIKU_MODEL = "claude-ollama-gpt-oss-20b"
-$env:ANTHROPIC_DEFAULT_SONNET_MODEL = "claude-ollama-qwen3-coder"
-$env:ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-ollama-gpt-oss-120b"
-$env:CLAUDE_CODE_SUBAGENT_MODEL = "claude-ollama-gpt-oss-20b"
-claude
-```
-
-On Windows in `cmd.exe`:
-
-```bat
-set ANTHROPIC_BASE_URL=http://127.0.0.1:8787
-set ANTHROPIC_API_KEY=dummy-claude-model-proxy
-set ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-ollama-gpt-oss-20b
-set ANTHROPIC_DEFAULT_SONNET_MODEL=claude-ollama-qwen3-coder
-set ANTHROPIC_DEFAULT_OPUS_MODEL=claude-ollama-gpt-oss-120b
-set CLAUDE_CODE_SUBAGENT_MODEL=claude-ollama-gpt-oss-20b
-claude
-```
-
-`ANTHROPIC_API_KEY` is only a non-empty client-side placeholder for this proxy.
-Provider API keys still come from the proxy's `.env`, MCPB install settings, or
-LaunchAgent environment file.
-
-Claude Code works best with Anthropic Messages-compatible upstreams such as
-DeepSeek, Moonshot/Kimi, GLM, Xiaomi MiMo, and Anthropic because tool-use
-payloads are passed through as-is. OpenAI, Gemini, Qwen, and Ollama Cloud
-routes use a basic Chat Completions adapter for text/image and streaming
-responses; they are not a full Claude Code tool-use compatibility layer, so
-heavy tool-driven workflows (file edits, shell, MCP servers) currently work
-best on the Anthropic-Messages providers above. Plain chat / coding-Q&A flows
-on Ollama Cloud work today.
-
-## Claude Desktop extension
-
-Build the installable MCPB extension:
-
-```sh
-npm run build:mcpb
-```
-
-The output is:
-
-```text
-dist/claude-model-proxy-0.1.0.mcpb
-```
-
-### Step-by-step Claude Desktop setup
-
-1. **Enable Developer Mode in Claude Desktop.** Open Claude Desktop ->
-   Settings -> General. If you do not see "Developer Mode" or "Extensions",
-   open Help -> Enable Developer Mode (varies by build) and restart the app.
-2. **Install the MCPB extension.** Settings -> Extensions / Connectors ->
-   Advanced settings -> Install Extension -> select the
-   `dist/claude-model-proxy-<version>.mcpb` file from the build step above.
-3. **Fill in the install dialog.** At minimum, paste your `OLLAMA_API_KEY`
-   (from [ollama.com/settings/keys](https://ollama.com/settings/keys)) plus
-   `DEEPSEEK_API_KEY` and `MOONSHOT_API_KEY` if you plan to use those
-   providers. Leave any provider's key blank if you do not want to use it.
-   Other providers (GLM, Xiaomi, OpenAI, Gemini, Qwen, Anthropic) go in the
-   **Optional Advanced Settings JSON** field — see the bottom of this README.
-4. **Verify the proxy is up.** Open a terminal and run
-   `curl http://127.0.0.1:8787/v1/models`. You should see a JSON list of
-   `claude-*` model ids. If you get connection refused, give Claude Desktop a
-   few seconds to start the extension process and try again.
-5. **Point Claude Desktop's gateway at the proxy.** Settings -> Developer
-   Mode -> Third-party inference -> Gateway. Use:
-   - **Provider:** `Gateway`
-   - **Gateway base URL:** `http://127.0.0.1:8787`
-   - **Gateway API key:** any non-empty placeholder (e.g.
-     `dummy-claude-model-proxy`)
-   - **Gateway auth scheme:** `bearer`
-   - **Model list:** prefer **Fetch from gateway** — the proxy returns the
-     Anthropic-compatible catalog (`id`, `type`, `display_name`, `created_at`)
-     and the dropdown populates automatically. If your build of Claude Desktop
-     does not auto-fetch, paste the Claude-style ids you want from the table
-     above (one per line).
-6. **Pick a model.** Open a new chat and select one of the proxy models from
-   the dropdown — for example `claude-ollama-gpt-oss-120b` or
-   `claude-deepseek-v4-pro`. If the dropdown is empty, see the troubleshooting
-   block below.
-
-Install it in Claude Desktop from Settings -> Extensions / Connectors ->
-Advanced settings -> Install Extension. During first installation, fill in the
-gateway URL, local port, DeepSeek credentials, Moonshot/Kimi credentials, and
-the **Ollama Cloud API Key** field. Leave any provider's key blank if you do
-not want to use that provider. Optional providers and mapping overrides can be
-supplied through the advanced JSON field.
-
-The MCPB build runs the proxy as a Node-stdio MCP server, so the same `.mcpb`
-file works on Windows and macOS. On Windows, Claude Desktop manages the proxy
-process for you — you do not need to keep a separate terminal open with
-`npm start` after installing the extension.
-
-After the extension is installed, open Claude Desktop settings and configure
-third-party inference as shown below. If the third-party inference or extension
-controls are hidden, enable Developer Mode first.
-
-![Claude Desktop gateway settings](srcs/claude-developer-mode.png)
-
-Use these values:
-
-- Provider: `Gateway`
-- Gateway base URL: `http://127.0.0.1:8787`
-- Gateway API key: any non-empty placeholder, for example
-  `dummy-claude-model-proxy`
-- Gateway auth scheme: `bearer`
-- Model list: leave the field on **Fetch from gateway** so Claude Desktop reads
-  the model catalog from `/v1/models` directly. The proxy now returns a
-  fully-Anthropic-compatible model list (`id`, `type`, `display_name`,
-  `created_at`), so the model dropdown is populated automatically. If your
-  Claude Desktop build does not support auto-fetch, paste the Claude-style
-  request model names manually — for example,
-  `claude-deepseek-v4-flash`, `claude-deepseek-v4-pro`, `claude-kimi-k2.6`,
-  `claude-qwen-flash`, `claude-qwen-plus`, `claude-qwen-max`, or any
-  Ollama Cloud aliases such as `claude-ollama-gpt-oss-20b`,
-  `claude-ollama-gpt-oss-120b`, `claude-ollama-qwen3-coder`,
-  `claude-ollama-deepseek-v3.1`, `claude-ollama-kimi-k2`, or the short forms
-  `claude-dsv4-flash`, `claude-dsv4-pro`, `claude-glm51`.
-
-> **If the model selection dropdown is empty after install:** click
-> **Check again** / **Refresh** in the gateway settings. The MCPB extension
-> needs the proxy process to be listening before Claude Desktop probes
-> `/v1/models`. If the dropdown is still empty, verify the proxy is up with
-> `curl http://127.0.0.1:8787/v1/models` — you should see the JSON catalog of
-> `claude-*` ids. If that works but Claude Desktop still shows no models,
-> ensure Developer Mode is on, the Gateway API key field is non-empty (any
-> placeholder is fine), and the auth scheme is `bearer`.
-
-Provider API keys are configured in the extension installer or environment
-variables, not in the Gateway API key field.
-
-The extension exposes a `model_proxy_status` tool so you can inspect local proxy
-status, providers, and model mappings from Claude.
-
-In Claude Desktop settings, this appears under Tool permissions as
-`Other tools -> Model proxy status`. If its permission is `Needs approval`,
-Claude will ask before each tool call. The tool is annotated as read-only and
-non-destructive, so new installs on clients that honor MCP annotations should be
-able to default it to no approval; existing user permission overrides may need
-to be changed once in settings. In a Claude chat, ask:
-
-```text
-Use the Model proxy status tool to check whether Claude Model Proxy is running.
-```
-
-or:
-
-```text
-Call model_proxy_status and tell me whether the proxy is listening and whether
-API keys are configured.
-```
-
-The returned JSON includes `listening`, `error`, `external`, `localUrl`,
-provider `hasApiKey` flags, and the active model mappings. You can also inspect
-similar status from a terminal:
-
-```sh
-curl http://127.0.0.1:8787/healthz
-```
-
-If a brand-new chat says `model_proxy_status` is unavailable but the same
-request works immediately on retry, Claude started the model response before it
-had refreshed the MCPB tool list. The extension declares a fixed static tool
-list in the bundle metadata and marks `model_proxy_status` as read-only so
-clients can discover and approve it early. If the first already-started response
-was built without tools, retry the request once or open the chat after Claude
-Desktop has finished loading the extension. Keeping the proxy itself running as
-a LaunchAgent also avoids the separate gateway-listening race described below.
-
-## Avoid the startup warning
-
-Claude Desktop can probe the gateway before the MCPB extension process has
-finished starting. When that happens, Claude shows "Can't reach 127.0.0.1:8787"
-until you click "Check again".
-
-For a clean startup, run the proxy as a macOS LaunchAgent so it is already
-listening before Claude starts:
-
-```sh
-npm run launch-agent:install
-```
-
-The installer creates `~/.claude-model-proxy.env`. Put the same provider keys in
-that file, then restart the agent:
-
-```sh
-launchctl kickstart -k gui/$(id -u)/local.claude-model-proxy
-curl http://127.0.0.1:8787/healthz
-```
-
-The MCPB extension can still stay installed. If it sees the LaunchAgent already
-owning port `8787`, its status reports the proxy as externally running instead
-of treating the port conflict as a failure.
-
-To remove the LaunchAgent:
-
-```sh
-npm run launch-agent:uninstall
-```
-
-## Extension install UI
-
-The MCPB installer shows only the gateway/proxy basics plus DeepSeek and
-Moonshot/Kimi credentials by default. Less common provider credentials and
-mapping overrides stay available through one optional advanced JSON field:
+## Model routing table
+
+| Claude alias (request) | Provider | Upstream id |
+| --- | --- | --- |
+| `claude-haiku-4-5`, `claude-sonnet-4-5`, `claude-sonnet-4-6`, `claude-opus-4-1`, `claude-opus-4-7` | Anthropic (or family fallback if no key) | same name |
+| `claude-haiku-4-5-20251001` and any dated `claude-{haiku,sonnet,opus}-*-YYYYMMDD` | Anthropic if key present, otherwise the Claude family fallback alias | resolved |
+| `claude-deepseek-v4-flash`, `claude-deepseek-v4-pro` | DeepSeek | `deepseek-v4-flash`, `deepseek-v4-pro` |
+| `claude-kimi-k2.6` | Moonshot | `kimi-k2.6` |
+| `claude-glm-4.5-air`, `claude-glm-4.6`, `claude-glm-4.7`, `claude-glm-5`, `claude-glm-5.1` | Z.AI | matching `glm-*` |
+| `claude-mimo-v2-flash`, `claude-mimo-v2-pro`, `claude-mimo-v2.5-pro`, `claude-mimo-v2-omni` | Xiaomi MiMo | matching `mimo-*` |
+| `claude-gpt-5.5`, `claude-gpt-5.4`, `claude-gpt-5.4-mini` | OpenAI | matching `gpt-*` |
+| `claude-gemini-2.0-flash`, `claude-gemini-2.5-flash`, `claude-gemini-2.5-pro`, `claude-gemini-3-flash-preview`, `claude-gemini-3.1-flash-lite-preview`, `claude-gemini-3.1-pro-preview` | Gemini | matching `gemini-*` |
+| `claude-qwen-flash`, `claude-qwen-plus`, `claude-qwen-max` | Qwen/DashScope | matching `qwen-*` |
+| `claude-ollama-gpt-oss-20b` | Ollama Cloud | `gpt-oss:20b-cloud` |
+| `claude-ollama-gpt-oss-120b` | Ollama Cloud | `gpt-oss:120b-cloud` |
+| `claude-ollama-deepseek-v3.1` | Ollama Cloud | `deepseek-v3.1:671b-cloud` |
+| `claude-ollama-deepseek-v3.2` | Ollama Cloud | `deepseek-v3.2:cloud` |
+| `claude-ollama-deepseek-v4-flash` *(short: `claude-dsv4-flash`)* | Ollama Cloud | `deepseek-v4-flash:cloud` |
+| `claude-ollama-deepseek-v4-pro` *(short: `claude-dsv4-pro`)* | Ollama Cloud | `deepseek-v4-pro:cloud` |
+| `claude-ollama-qwen3-coder` | Ollama Cloud | `qwen3-coder:480b-cloud` |
+| `claude-ollama-qwen3-coder-next` | Ollama Cloud | `qwen3-coder-next:cloud` |
+| `claude-ollama-qwen3-vl`, `claude-ollama-qwen3-vl-instruct` | Ollama Cloud | `qwen3-vl:235b-cloud`, `qwen3-vl:235b-instruct-cloud` |
+| `claude-ollama-qwen3-next` | Ollama Cloud | `qwen3-next:80b-cloud` |
+| `claude-ollama-qwen3.5` | Ollama Cloud | `qwen3.5:cloud` |
+| `claude-ollama-kimi-k2` | Ollama Cloud | `kimi-k2:1t-cloud` |
+| `claude-ollama-kimi-k2-thinking` | Ollama Cloud | `kimi-k2-thinking:cloud` |
+| `claude-ollama-kimi-k2.6` | Ollama Cloud | `kimi-k2.6:cloud` |
+| `claude-ollama-glm-4.6`, `claude-ollama-glm-4.7`, `claude-ollama-glm-5` | Ollama Cloud | matching `glm-*:cloud` |
+| `claude-ollama-glm-5.1` *(short: `claude-glm51`)* | Ollama Cloud | `glm-5.1:cloud` |
+| `claude-ollama-minimax-m2`, `…-m2.1`, `…-m2.5`, `…-m2.7` | Ollama Cloud | matching `minimax-*:cloud` |
+| `claude-ollama-nemotron-3-nano`, `claude-ollama-nemotron-3-super` | Ollama Cloud | `nemotron-3-nano:30b-cloud`, `nemotron-3-super:cloud` |
+| `claude-ollama-devstral-small-2`, `claude-ollama-ministral-3` | Ollama Cloud | `devstral-small-2:24b-cloud`, `ministral-3:8b-cloud` |
+| `claude-ollama-gemma4-31b` | Ollama Cloud | `gemma4:31b-cloud` |
+| `claude-ollama-gemini-3-flash-preview` | Ollama Cloud | `gemini-3-flash-preview:cloud` |
+| `claude-ollama-rnj-1` | Ollama Cloud | `rnj-1:8b-cloud` |
+
+Conflict resolution: the same upstream id (e.g. `glm-4.6`) can be served by both
+Z.AI and Ollama Cloud. The proxy disambiguates by request alias, so
+`claude-glm-4.6` always goes to Z.AI and `claude-ollama-glm-4.6` always goes to
+Ollama (as `glm-4.6:cloud`).
+
+The live source of truth is `curl http://127.0.0.1:8787/v1/models` against a
+running proxy.
+
+## Configuration reference
+
+All settings come from environment variables. Standalone runs read `.env`
+automatically (via `dotenv`); the MCPB install dialog writes the same
+variables for you.
+
+### Proxy basics
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `BASE_URL` | `http://127.0.0.1:8787` | URL Claude Desktop calls. |
+| `PORT` | `8787` | Local listen port. |
+| `DEFAULT_PROVIDER` | `deepseek` | Fallback for unmapped models. Set to `ollama` for an Ollama-only setup. |
+| `REWRITE_RESPONSES` | `true` | Rewrite upstream model ids back to the Claude alias in responses. |
+| `DEBUG_PROXY` | `false` | Verbose request/response logging — leave off in production; request bodies can be large. |
+| `REQUEST_BODY_LIMIT_BYTES` | `52428800` (50 MB) | Maximum incoming request size. |
+
+### Claude family fallback
+
+These are used **only** when `ANTHROPIC_API_KEY` is empty. Any incoming
+`claude-haiku-*`, `claude-sonnet-*`, or `claude-opus-*` (including dated
+variants) is rewritten to the alias below before routing.
+
+| Variable | Default |
+| --- | --- |
+| `CLAUDE_HAIKU_MODEL` | `claude-ollama-qwen3-coder-next` |
+| `CLAUDE_SONNET_MODEL` | `claude-ollama-qwen3-coder` |
+| `CLAUDE_OPUS_MODEL` | `claude-ollama-gpt-oss-120b` |
+
+The value must be a Claude alias that exists in `MODEL_MAP`. Useful overrides:
+point Sonnet at `claude-deepseek-v4-pro`, Opus at `claude-kimi-k2.6`, etc.
+
+### Provider credentials
+
+| Variable | Default base URL | Notes |
+| --- | --- | --- |
+| `OLLAMA_API_KEY` | `https://ollama.com/v1` (`OLLAMA_BASE_URL`) | Get at [ollama.com/settings/keys](https://ollama.com/settings/keys). |
+| `DEEPSEEK_API_KEY` | `https://api.deepseek.com/anthropic` | Anthropic-shape upstream. |
+| `MOONSHOT_API_KEY` (alias `KIMI_API_KEY`) | `https://api.moonshot.cn/anthropic` | Anthropic-shape upstream. |
+| `GLM_API_KEY` (aliases `ZAI_API_KEY`, `ZHIPU_API_KEY`) | `https://api.z.ai/api/anthropic` | Anthropic-shape upstream. |
+| `XIAOMI_API_KEY` (alias `MIMO_API_KEY`) | `https://api.xiaomimimo.com/anthropic` | Anthropic-shape upstream. |
+| `OPENAI_API_KEY` | `https://api.openai.com/v1` | OpenAI Chat Completions. |
+| `GEMINI_API_KEY` (alias `GOOGLE_API_KEY`) | `https://generativelanguage.googleapis.com/v1beta/openai` | OpenAI-compatible surface. |
+| `QWEN_API_KEY` (alias `DASHSCOPE_API_KEY`) | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compatible surface. |
+| `ANTHROPIC_API_KEY` | `https://api.anthropic.com` | Real Anthropic, sent as `x-api-key`. |
+
+Every provider also supports a `_BASE_URL` override (e.g. `DEEPSEEK_BASE_URL`)
+if you're behind a custom gateway.
+
+### Advanced routing overrides
+
+Three optional env vars, each accepting a JSON object or a `from=to,from=to`
+list. Merged on top of the built-in defaults.
+
+- `MODEL_MAP` — Claude alias → upstream id.
+- `MODEL_ALIASES` — upstream id → Claude alias for response rewriting.
+- `MODEL_ROUTES` — model name (alias **or** upstream id) → provider name.
+
+For MCPB installs the **Optional Advanced Settings JSON** field accepts a
+single blob with the same env-var keys:
 
 ```json
 {
   "GLM_API_KEY": "...",
-  "XIAOMI_API_KEY": "...",
   "ANTHROPIC_API_KEY": "sk-ant-...",
-  "OPENAI_API_KEY": "sk-...",
-  "GEMINI_API_KEY": "...",
-  "QWEN_API_KEY": "sk-..."
+  "DEBUG_PROXY": "true"
 }
 ```
 
-`OLLAMA_API_KEY` already has a dedicated field in the installer UI, but you
-can also set it through advanced env if you prefer keeping all keys in one
-place.
+## Endpoints
 
-The advanced field accepts any environment variable listed below, including
-`MODEL_MAP`, `MODEL_ALIASES`, `MODEL_ROUTES`, and `REWRITE_RESPONSES`.
+The proxy speaks the Anthropic Messages REST API. Claude Desktop hits these:
+
+- `GET /v1/models` — Anthropic-compatible catalog, populated from `MODEL_MAP`.
+- `GET /v1/models/{id}` — single model lookup.
+- `POST /v1/messages` — chat (forwarded to the resolved provider).
+- `POST /v1/messages/count_tokens` — **handled locally** by a character-based
+  heuristic estimate. Returns `{"input_tokens": <n>}`.
+- `GET /healthz` — proxy state, provider key flags, fallback table.
+
+## Troubleshooting
+
+**"Model selection dropdown is empty in Claude Desktop"**
+Click **Check again / Refresh** in the Gateway settings. The MCPB extension
+needs a couple of seconds to bind port 8787. If the dropdown stays empty:
+
+```sh
+curl http://127.0.0.1:8787/v1/models
+```
+
+If that returns JSON with `data` entries, ensure Developer Mode is on, the
+Gateway API key field is non-empty (any placeholder is fine), and the auth
+scheme is `bearer`. If it returns connection refused, the MCPB process didn't
+start — check Claude Desktop's extension log, or run `npm start` in a terminal
+to test standalone.
+
+**"model not found" 404 from Ollama on `claude-haiku-4-5-20251001`**
+Pre-fix symptom: Claude Desktop's internal title-generator was forwarded
+unchanged to Ollama Cloud, which rejected it. As of v0.2.0 the proxy strips
+the date suffix and, when `ANTHROPIC_API_KEY` is empty, routes the request to
+the Claude family fallback (`claude-ollama-qwen3-coder-next` for haiku by
+default). If you're still seeing this after upgrading, make sure
+`DEFAULT_PROVIDER=ollama` and `OLLAMA_API_KEY` is set; the family fallback
+also needs a valid key for the destination provider.
+
+**404 at `/v1/v1/messages/count_tokens`**
+Pre-fix symptom: when `OLLAMA_BASE_URL` ended in `/v1` and Claude Desktop
+called `/v1/messages/count_tokens`, the path was concatenated to
+`/v1/v1/messages/count_tokens`. The proxy now answers `count_tokens` locally
+and never forwards it.
+
+**`MODEL_MAP contains invalid JSON`** at startup
+Your `.env` line wraps onto multiple lines without escaping. The proxy
+tolerates whitespace and trailing commas inside the JSON, but the value must
+still be a single dotenv entry. Either put it on one line or escape the
+newlines.
+
+**Multiple providers but everything goes to one of them**
+`DEFAULT_PROVIDER` is only used for unmapped models. Routes for the built-in
+aliases come from `MODEL_ROUTES`, which the proxy merges with your overrides.
+If you've set `MODEL_ROUTES` in `.env`, double-check that you haven't
+overwritten the entry you care about. `curl http://127.0.0.1:8787/healthz`
+prints the effective table.
+
+## MCP tool: `model_proxy_status`
+
+The MCPB exposes one MCP tool that lets you ask Claude about the running
+proxy from inside a chat:
+
+> "Use the Model proxy status tool to check whether Claude Model Proxy is
+> running."
+
+It returns `listening`, `defaultProvider`, the provider table with
+`hasApiKey` flags, the full `modelMap` / `modelAliases` / `modelRoutes`,
+and the active `claudeFamilyFallback` table.
+
+## Claude Code (CLI) integration
+
+Claude Code can use this proxy through its Anthropic-compatible env vars.
+Start the proxy first, then in the terminal where you run `claude`:
+
+```sh
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+export ANTHROPIC_API_KEY=dummy-claude-model-proxy
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-ollama-qwen3-coder-next
+export ANTHROPIC_DEFAULT_SONNET_MODEL=claude-ollama-qwen3-coder
+export ANTHROPIC_DEFAULT_OPUS_MODEL=claude-ollama-gpt-oss-120b
+export CLAUDE_CODE_SUBAGENT_MODEL=claude-ollama-qwen3-coder-next
+claude
+```
+
+Tool-use payloads pass through as-is to Anthropic-Messages-compatible
+providers (DeepSeek, Moonshot, GLM, Xiaomi, real Anthropic). On OpenAI / Gemini
+/ Qwen / Ollama Cloud the basic Chat Completions adapter handles text +
+images + streaming text deltas; heavy tool-driven workflows still work best
+on the Anthropic-Messages providers above.
+
+## macOS LaunchAgent (avoid the startup warning)
+
+Claude Desktop can probe the gateway before the MCPB extension finishes
+starting. To pre-warm the proxy as a macOS LaunchAgent:
+
+```sh
+npm run launch-agent:install
+# Edit ~/.claude-model-proxy.env with the same keys you'd put in .env.
+launchctl kickstart -k gui/$(id -u)/local.claude-model-proxy
+curl http://127.0.0.1:8787/healthz
+```
+
+The MCPB extension can stay installed; if it sees the LaunchAgent already
+holding port 8787 it reports the proxy as externally running instead of
+treating the port conflict as a failure. Remove with:
+
+```sh
+npm run launch-agent:uninstall
+```
 
 ## Project layout
 
@@ -560,13 +334,12 @@ The advanced field accepts any environment variable listed below, including
 .
 ├── manifest.json              # MCPB extension manifest
 ├── proxy.mjs                  # HTTP gateway proxy and provider adapters
-├── server/index.mjs           # MCP stdio server that starts the proxy
+├── server/index.mjs           # MCP stdio server that hosts the proxy
 ├── scripts/                   # Build, launchd, and Node helper scripts
 ├── srcs/                      # README screenshots and images
-├── test/proxy.test.mjs        # Node test suite
-├── start.sh                   # Standalone launcher
-├── .env.claude-code.example   # Claude Code client configuration template
-└── .env.example               # Safe local configuration template
+├── test/proxy.test.mjs        # Node test suite (42 cases)
+├── start.sh                   # Standalone launcher (POSIX)
+└── .env.example               # Configuration template
 ```
 
 Generated files under `dist/`, local `.env` files, logs, editor files, and
@@ -574,15 +347,11 @@ dependencies are ignored by `.gitignore`.
 
 ## Notes
 
-DeepSeek, Moonshot/Kimi, GLM, Xiaomi MiMo, and Anthropic are treated as
-Anthropic Messages-compatible upstreams. OpenAI, Gemini, Qwen, and Ollama
-Cloud are adapted through their OpenAI-compatible Chat Completions endpoints.
-The adapter covers normal text and image message content plus streaming text
-deltas; Anthropic tool-use blocks, audio, and provider-specific advanced
-options are intentionally left as upstream-specific behavior.
-
-Ollama Cloud's OpenAI-compatible surface is officially marked experimental by
-upstream. If a future Ollama release breaks the chat-completions chunk shape
-the proxy decodes, drop `stream` to `false` for a quick workaround while the
-adapter is updated. The current request/response paths are exercised by
-`test/proxy.test.mjs`.
+- DeepSeek, Moonshot/Kimi, GLM, Xiaomi MiMo, and Anthropic are treated as
+  Anthropic Messages-compatible upstreams (body passed through).
+- OpenAI, Gemini, Qwen, and Ollama Cloud go through the OpenAI Chat
+  Completions adapter (text + image content + streaming text deltas;
+  Anthropic tool-use blocks are converted to text only).
+- Ollama Cloud's OpenAI-compatible surface is officially experimental.
+  If a future Ollama release breaks the chunk shape we decode, drop `stream`
+  to `false` for a quick workaround.

@@ -7,11 +7,15 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
 import {
+  DEFAULT_CLAUDE_FAMILY_FALLBACK,
   DEFAULT_MODEL_ALIASES,
   DEFAULT_MODEL_MAP,
   DEFAULT_MODEL_ROUTES,
   createProxyServer,
   loadConfig,
+  resolveClaudeFamily,
+  resolveModelForUpstream,
+  stripClaudeDate,
 } from '../proxy.mjs';
 
 test('routes claude-deepseek-v4-flash to DeepSeek flash and rewrites responses back', async (t) => {
@@ -774,7 +778,7 @@ test('loads hidden optional provider config from advanced env JSON', () => {
   assert.equal(config.rewriteResponses, false);
 });
 
-test('manifest keeps installer config focused on DeepSeek and Moonshot', () => {
+test('manifest exposes provider keys plus Claude family fallback overrides', () => {
   const testDir = path.dirname(fileURLToPath(import.meta.url));
   const rootDir = path.resolve(testDir, '..');
   const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, 'manifest.json'), 'utf8'));
@@ -786,23 +790,31 @@ test('manifest keeps installer config focused on DeepSeek and Moonshot', () => {
   assert.deepEqual(Object.keys(manifest.user_config), [
     'base_url',
     'port',
+    'default_provider',
+    'ollama_base_url',
+    'ollama_api_key',
+    'claude_haiku_model',
+    'claude_sonnet_model',
+    'claude_opus_model',
     'deepseek_base_url',
     'deepseek_api_key',
     'moonshot_base_url',
     'moonshot_api_key',
-    'ollama_base_url',
-    'ollama_api_key',
     'advanced_env',
   ]);
   assert.deepEqual(Object.keys(manifest.server.mcp_config.env), [
     'BASE_URL',
     'PORT',
+    'DEFAULT_PROVIDER',
     'DEEPSEEK_BASE_URL',
     'DEEPSEEK_API_KEY',
     'MOONSHOT_BASE_URL',
     'MOONSHOT_API_KEY',
     'OLLAMA_BASE_URL',
     'OLLAMA_API_KEY',
+    'CLAUDE_HAIKU_MODEL',
+    'CLAUDE_SONNET_MODEL',
+    'CLAUDE_OPUS_MODEL',
     'ADVANCED_ENV',
   ]);
   assert.equal(manifest.tools_generated, false);
@@ -1011,6 +1023,191 @@ test('uses Anthropic-compatible provider base URLs by default', () => {
   assert.equal(config.modelRoutes['glm-5.1'], 'glm');
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Smart model resolution + path fixes + count_tokens tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('stripClaudeDate removes the 8-digit date suffix Claude Desktop appends', () => {
+  assert.equal(stripClaudeDate('claude-haiku-4-5-20251001'), 'claude-haiku-4-5');
+  assert.equal(stripClaudeDate('claude-sonnet-4-6-20260131'), 'claude-sonnet-4-6');
+  // No suffix → no change.
+  assert.equal(stripClaudeDate('claude-haiku-4-5'), 'claude-haiku-4-5');
+  // Not 8 digits → no change.
+  assert.equal(stripClaudeDate('claude-haiku-4-5-2025'), 'claude-haiku-4-5-2025');
+});
+
+test('resolveClaudeFamily detects the haiku/sonnet/opus family', () => {
+  assert.equal(resolveClaudeFamily('claude-haiku-4-5-20251001'), 'haiku');
+  assert.equal(resolveClaudeFamily('claude-sonnet-4-6'), 'sonnet');
+  assert.equal(resolveClaudeFamily('claude-opus-4-7'), 'opus');
+  assert.equal(resolveClaudeFamily('claude-ollama-gpt-oss-120b'), null);
+  assert.equal(resolveClaudeFamily('gpt-5.4'), null);
+});
+
+test('resolveModelForUpstream falls back to Ollama for dated Claude names when ANTHROPIC_API_KEY is empty', () => {
+  const config = loadConfig({
+    OLLAMA_API_KEY: 'ollama-test',
+    DEFAULT_PROVIDER: 'ollama',
+  });
+
+  // Dated Haiku → fallback alias (claude-ollama-qwen3-coder-next by default).
+  const haiku = resolveModelForUpstream('claude-haiku-4-5-20251001', config);
+  assert.equal(haiku.family, 'haiku');
+  assert.equal(haiku.requestAlias, 'claude-ollama-qwen3-coder-next');
+  assert.equal(haiku.upstreamModel, 'qwen3-coder-next:cloud');
+
+  // Dated Sonnet → fallback alias.
+  const sonnet = resolveModelForUpstream('claude-sonnet-4-6-20260131', config);
+  assert.equal(sonnet.family, 'sonnet');
+  assert.equal(sonnet.requestAlias, 'claude-ollama-qwen3-coder');
+  assert.equal(sonnet.upstreamModel, 'qwen3-coder:480b-cloud');
+
+  // Dated Opus → fallback alias.
+  const opus = resolveModelForUpstream('claude-opus-4-7-20260131', config);
+  assert.equal(opus.family, 'opus');
+  assert.equal(opus.requestAlias, 'claude-ollama-gpt-oss-120b');
+  assert.equal(opus.upstreamModel, 'gpt-oss:120b-cloud');
+});
+
+test('resolveModelForUpstream honors CLAUDE_HAIKU_MODEL/SONNET/OPUS overrides', () => {
+  const config = loadConfig({
+    OLLAMA_API_KEY: 'ollama-test',
+    DEFAULT_PROVIDER: 'ollama',
+    CLAUDE_HAIKU_MODEL: 'claude-ollama-kimi-k2',
+    CLAUDE_SONNET_MODEL: 'claude-ollama-glm-5.1',
+    CLAUDE_OPUS_MODEL: 'claude-dsv4-pro',
+  });
+
+  assert.equal(
+    resolveModelForUpstream('claude-haiku-4-5-20251001', config).upstreamModel,
+    'kimi-k2:1t-cloud',
+  );
+  assert.equal(
+    resolveModelForUpstream('claude-sonnet-4-6', config).upstreamModel,
+    'glm-5.1:cloud',
+  );
+  assert.equal(
+    resolveModelForUpstream('claude-opus-4-7', config).upstreamModel,
+    'deepseek-v4-pro:cloud',
+  );
+});
+
+test('resolveModelForUpstream uses Anthropic directly when ANTHROPIC_API_KEY is set', () => {
+  const config = loadConfig({
+    OLLAMA_API_KEY: 'ollama-test',
+    ANTHROPIC_API_KEY: 'sk-ant-test',
+  });
+
+  // Date is stripped and exact entry wins — no family fallback.
+  const haiku = resolveModelForUpstream('claude-haiku-4-5-20251001', config);
+  assert.equal(haiku.requestAlias, 'claude-haiku-4-5');
+  assert.equal(haiku.upstreamModel, 'claude-haiku-4-5');
+});
+
+test('routes dated Claude haiku request to Ollama via family fallback', async (t) => {
+  let upstreamBody;
+
+  const ollama = http.createServer(async (req, res) => {
+    upstreamBody = await readBody(req);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      id: 'chatcmpl_fallback',
+      model: 'qwen3-coder-next:cloud',
+      choices: [
+        { finish_reason: 'stop', message: { role: 'assistant', content: 'fallback ok' } },
+      ],
+    }));
+  });
+
+  await listen(ollama);
+  t.after(() => close(ollama));
+
+  // Test config has anthropicApiKey set; flip Anthropic off so family fallback engages.
+  const config = createTestConfig({
+    ollamaBaseUrl: `http://127.0.0.1:${ollama.address().port}/v1`,
+  });
+  config.providers.anthropic.upstreamApiKey = '';
+  config.defaultProvider = 'ollama';
+  config.claudeFamilyFallback = { ...DEFAULT_CLAUDE_FAMILY_FALLBACK };
+
+  const proxy = createProxyServer(config);
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await postJson(`http://127.0.0.1:${proxy.address().port}/v1/messages`, {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 32,
+    messages: [{ role: 'user', content: 'hello' }],
+  });
+
+  const parsed = JSON.parse(upstreamBody);
+  assert.equal(parsed.model, 'qwen3-coder-next:cloud');
+  assert.equal(response.statusCode, 200);
+  // Response model is rewritten back to the fallback alias the client effectively asked for.
+  assert.equal(response.body.model, 'claude-ollama-qwen3-coder-next');
+});
+
+test('/v1/messages/count_tokens is answered locally with a heuristic estimate', async (t) => {
+  let upstreamHit = false;
+  const ollama = http.createServer((_req, res) => {
+    upstreamHit = true;
+    res.writeHead(404);
+    res.end();
+  });
+  await listen(ollama);
+  t.after(() => close(ollama));
+
+  const proxy = createProxyServer(createTestConfig({
+    ollamaBaseUrl: `http://127.0.0.1:${ollama.address().port}/v1`,
+  }));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await postJson(
+    `http://127.0.0.1:${proxy.address().port}/v1/messages/count_tokens`,
+    {
+      model: 'claude-haiku-4-5-20251001',
+      messages: [{ role: 'user', content: 'count this please' }],
+    },
+  );
+
+  assert.equal(upstreamHit, false, 'count_tokens must not be forwarded upstream');
+  assert.equal(response.statusCode, 200);
+  assert.equal(typeof response.body.input_tokens, 'number');
+  assert.ok(response.body.input_tokens >= 1);
+});
+
+test('buildTargetUrl does not produce /v1/v1 when the Ollama base URL already ends in /v1', async (t) => {
+  let upstreamPath;
+  const ollama = http.createServer(async (req, res) => {
+    upstreamPath = req.url;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      id: 'chatcmpl_test',
+      model: 'gpt-oss:20b-cloud',
+      choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }],
+    }));
+  });
+  await listen(ollama);
+  t.after(() => close(ollama));
+
+  // Base URL ends in /v1, incoming Anthropic path is /v1/messages.
+  const proxy = createProxyServer(createTestConfig({
+    ollamaBaseUrl: `http://127.0.0.1:${ollama.address().port}/v1`,
+  }));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  await postJson(`http://127.0.0.1:${proxy.address().port}/v1/messages`, {
+    model: 'claude-ollama-gpt-oss-20b',
+    max_tokens: 8,
+    messages: [{ role: 'user', content: 'hi' }],
+  });
+
+  assert.equal(upstreamPath, '/v1/chat/completions');
+  assert.ok(!upstreamPath.includes('/v1/v1/'), 'must not duplicate /v1 prefix');
+});
+
 function createTestConfig({
   deepseekBaseUrl = 'http://127.0.0.1:1',
   moonshotBaseUrl = 'http://127.0.0.1:2',
@@ -1081,6 +1278,7 @@ function createTestConfig({
     modelMap: DEFAULT_MODEL_MAP,
     modelAliases: DEFAULT_MODEL_ALIASES,
     modelRoutes: DEFAULT_MODEL_ROUTES,
+    claudeFamilyFallback: DEFAULT_CLAUDE_FAMILY_FALLBACK,
     rewriteResponses: true,
     requestBodyLimitBytes: 1024 * 1024,
   };

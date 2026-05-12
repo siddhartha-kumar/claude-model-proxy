@@ -1,83 +1,105 @@
 #!/usr/bin/env node
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import http from 'node:http';
 import https from 'node:https';
 import { Transform } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Debug logging — gated by DEBUG_PROXY=true (default off)
+// ─────────────────────────────────────────────────────────────────────────────
+const DEBUG = String(process.env.DEBUG_PROXY || '').toLowerCase() === 'true';
+
+function debugLog(...args) {
+  if (DEBUG) {
+    console.log(...args);
+  }
+}
+
+function debugBlock(title, lines) {
+  if (!DEBUG) return;
+  console.log(`\n========== ${title} ==========`);
+  for (const line of lines) console.log(line);
+  console.log('='.repeat(title.length + 22) + '\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Default model map: Claude-style request alias → upstream model id.
+// Ollama Cloud upstreams use `-cloud` for sized models, `:cloud` for unsized.
+// Bare ids would hit local weights and fail on the hosted Ollama Cloud service.
+// ─────────────────────────────────────────────────────────────────────────────
 export const DEFAULT_MODEL_MAP = Object.freeze({
+  // DeepSeek Anthropic-compatible
   'claude-deepseek-v4-flash': 'deepseek-v4-flash',
   'claude-deepseek-v4-pro': 'deepseek-v4-pro',
+  // Moonshot/Kimi Anthropic-compatible
   'claude-kimi-k2.6': 'kimi-k2.6',
+  // Z.AI / GLM Anthropic-compatible
   'claude-glm-4.5-air': 'glm-4.5-air',
   'claude-glm-4.6': 'glm-4.6',
   'claude-glm-4.7': 'glm-4.7',
   'claude-glm-5': 'glm-5',
   'claude-glm-5.1': 'glm-5.1',
+  // Xiaomi MiMo Anthropic-compatible
   'claude-mimo-v2-flash': 'mimo-v2-flash',
   'claude-mimo-v2-pro': 'mimo-v2-pro',
   'claude-mimo-v2.5-pro': 'mimo-v2.5-pro',
   'claude-mimo-v2-omni': 'mimo-v2-omni',
+  // OpenAI Chat Completions
   'claude-gpt-5.5': 'gpt-5.5',
   'claude-gpt-5.4': 'gpt-5.4',
   'claude-gpt-5.4-mini': 'gpt-5.4-mini',
+  // Gemini OpenAI-compatible
   'claude-gemini-3.1-pro-preview': 'gemini-3.1-pro-preview',
   'claude-gemini-3-flash-preview': 'gemini-3-flash-preview',
   'claude-gemini-2.5-pro': 'gemini-2.5-pro',
   'claude-gemini-2.5-flash': 'gemini-2.5-flash',
   'claude-gemini-3.1-flash-lite-preview': 'gemini-3.1-flash-lite-preview',
   'claude-gemini-2.0-flash': 'gemini-2.0-flash',
+  // Qwen (DashScope) OpenAI-compatible
   'claude-qwen-flash': 'qwen-flash',
   'claude-qwen-plus': 'qwen-plus',
   'claude-qwen-max': 'qwen-max',
   // Ollama Cloud (Turbo) — hosted at ollama.com, no local install required.
-  // Cloud-routing tags: `-cloud` for sized models, `:cloud` for unsized.
-  // Bare ids would hit local Ollama weights and fail on the hosted service.
-  // gpt-oss
   'claude-ollama-gpt-oss-20b': 'gpt-oss:20b-cloud',
   'claude-ollama-gpt-oss-120b': 'gpt-oss:120b-cloud',
-  // DeepSeek
   'claude-ollama-deepseek-v3.1': 'deepseek-v3.1:671b-cloud',
   'claude-ollama-deepseek-v3.2': 'deepseek-v3.2:cloud',
   'claude-ollama-deepseek-v4-flash': 'deepseek-v4-flash:cloud',
   'claude-ollama-deepseek-v4-pro': 'deepseek-v4-pro:cloud',
-  // Qwen
   'claude-ollama-qwen3-coder': 'qwen3-coder:480b-cloud',
   'claude-ollama-qwen3-coder-next': 'qwen3-coder-next:cloud',
   'claude-ollama-qwen3-vl': 'qwen3-vl:235b-cloud',
   'claude-ollama-qwen3-vl-instruct': 'qwen3-vl:235b-instruct-cloud',
   'claude-ollama-qwen3-next': 'qwen3-next:80b-cloud',
   'claude-ollama-qwen3.5': 'qwen3.5:cloud',
-  // Kimi (Moonshot)
   'claude-ollama-kimi-k2': 'kimi-k2:1t-cloud',
   'claude-ollama-kimi-k2-thinking': 'kimi-k2-thinking:cloud',
   'claude-ollama-kimi-k2.6': 'kimi-k2.6:cloud',
-  // GLM (Zhipu)
   'claude-ollama-glm-4.6': 'glm-4.6:cloud',
   'claude-ollama-glm-4.7': 'glm-4.7:cloud',
   'claude-ollama-glm-5': 'glm-5:cloud',
   'claude-ollama-glm-5.1': 'glm-5.1:cloud',
-  // MiniMax
   'claude-ollama-minimax-m2': 'minimax-m2:cloud',
   'claude-ollama-minimax-m2.1': 'minimax-m2.1:cloud',
   'claude-ollama-minimax-m2.5': 'minimax-m2.5:cloud',
   'claude-ollama-minimax-m2.7': 'minimax-m2.7:cloud',
-  // NVIDIA Nemotron
   'claude-ollama-nemotron-3-nano': 'nemotron-3-nano:30b-cloud',
   'claude-ollama-nemotron-3-super': 'nemotron-3-super:cloud',
-  // Mistral / Devstral
   'claude-ollama-devstral-small-2': 'devstral-small-2:24b-cloud',
   'claude-ollama-ministral-3': 'ministral-3:8b-cloud',
-  // Google
   'claude-ollama-gemma4-31b': 'gemma4:31b-cloud',
   'claude-ollama-gemini-3-flash-preview': 'gemini-3-flash-preview:cloud',
-  // Other
   'claude-ollama-rnj-1': 'rnj-1:8b-cloud',
-  // Short aliases pointing at popular Ollama Cloud upstreams.
+  // Short Ollama Cloud aliases
   'claude-dsv4-flash': 'deepseek-v4-flash:cloud',
   'claude-dsv4-pro': 'deepseek-v4-pro:cloud',
   'claude-glm51': 'glm-5.1:cloud',
+  // Native Anthropic Claude (forwarded to Anthropic Messages when ANTHROPIC_API_KEY is set)
   'claude-haiku-4-5': 'claude-haiku-4-5',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
   'claude-opus-4-7': 'claude-opus-4-7',
@@ -85,6 +107,7 @@ export const DEFAULT_MODEL_MAP = Object.freeze({
   'claude-opus-4-1': 'claude-opus-4-1',
 });
 
+// Upstream model id → Claude-style alias, used to rewrite response model fields.
 export const DEFAULT_MODEL_ALIASES = Object.freeze({
   'deepseek-v4-flash': 'claude-deepseek-v4-flash',
   'deepseek-v4-pro': 'claude-deepseek-v4-pro',
@@ -110,10 +133,6 @@ export const DEFAULT_MODEL_ALIASES = Object.freeze({
   'qwen-flash': 'claude-qwen-flash',
   'qwen-plus': 'claude-qwen-plus',
   'qwen-max': 'claude-qwen-max',
-  // Ollama Cloud upstream → Claude alias. Where multiple aliases share an
-  // upstream id (e.g. claude-ollama-deepseek-v4-flash and claude-dsv4-flash
-  // both map to deepseek-v4-flash:cloud), buildResponseModelMap restores the
-  // request alias used for that call; this table is the default fallback.
   'gpt-oss:20b-cloud': 'claude-ollama-gpt-oss-20b',
   'gpt-oss:120b-cloud': 'claude-ollama-gpt-oss-120b',
   'deepseek-v3.1:671b-cloud': 'claude-ollama-deepseek-v3.1',
@@ -151,6 +170,7 @@ export const DEFAULT_MODEL_ALIASES = Object.freeze({
   'claude-opus-4-1': 'claude-opus-4-1',
 });
 
+// Model/Claude alias → provider name. Provider names are normalized at load.
 export const DEFAULT_MODEL_ROUTES = Object.freeze({
   'deepseek-v4-flash': 'deepseek',
   'deepseek-v4-pro': 'deepseek',
@@ -216,6 +236,15 @@ export const DEFAULT_MODEL_ROUTES = Object.freeze({
   'claude-opus-4-1': 'anthropic',
 });
 
+// Claude family fallbacks — used when an incoming model is a dated/unknown
+// Claude model AND the Anthropic provider has no API key configured.
+// Each value is a Claude-style request alias that exists in DEFAULT_MODEL_MAP.
+export const DEFAULT_CLAUDE_FAMILY_FALLBACK = Object.freeze({
+  haiku: 'claude-ollama-qwen3-coder-next',
+  sonnet: 'claude-ollama-qwen3-coder',
+  opus: 'claude-ollama-gpt-oss-120b',
+});
+
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
   'keep-alive',
@@ -243,6 +272,121 @@ const MODEL_ARRAY_KEYS = new Set([
 
 const DEFAULT_REQUEST_BODY_LIMIT_BYTES = 50 * 1024 * 1024;
 
+const CLAUDE_DATED_SUFFIX = /-(\d{8})$/;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Smart model resolution — handles dated Claude names + family fallbacks.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function resolveClaudeFamily(model) {
+  if (typeof model !== 'string') return null;
+  if (/^claude-haiku\b/.test(model)) return 'haiku';
+  if (/^claude-sonnet\b/.test(model)) return 'sonnet';
+  if (/^claude-opus\b/.test(model)) return 'opus';
+  return null;
+}
+
+export function stripClaudeDate(model) {
+  if (typeof model !== 'string') return model;
+  return model.replace(CLAUDE_DATED_SUFFIX, '');
+}
+
+/**
+ * Resolve an incoming Claude-style request model to its upstream id.
+ *
+ * Resolution order:
+ *   1. Exact MODEL_MAP lookup
+ *   2. MODEL_MAP lookup with the date suffix stripped (claude-haiku-4-5-20251001 → claude-haiku-4-5)
+ *   3. If the model is a Claude family (haiku/sonnet/opus) AND the Anthropic
+ *      provider has no API key, fall back to the configured family alias and
+ *      resolve again.
+ *   4. Pass through unchanged.
+ *
+ * Returns { upstreamModel, requestAlias, family }. requestAlias is the
+ * Claude-style alias the caller should see in the response (used to rewrite
+ * response model fields).
+ */
+export function resolveModelForUpstream(model, config) {
+  if (typeof model !== 'string' || !model) {
+    return { upstreamModel: model, requestAlias: model, family: null };
+  }
+
+  const anthropicHasKey = Boolean(config.providers?.anthropic?.upstreamApiKey);
+  const stripped = stripClaudeDate(model);
+
+  // Helper: would looking up `alias` in modelRoutes send us to Anthropic? If so,
+  // and Anthropic has no key, treat this as "no usable mapping" and fall through
+  // to the family fallback. This is what keeps Ollama-only setups working when
+  // Claude Desktop emits internal calls like claude-haiku-4-5-20251001.
+  const routesToAnthropicWithoutKey = (alias) =>
+    config.modelRoutes?.[alias] === 'anthropic' && !anthropicHasKey;
+
+  // 1. Exact map hit (unless that hit routes to Anthropic with no key).
+  if (config.modelMap[model] && !routesToAnthropicWithoutKey(model)) {
+    return {
+      upstreamModel: config.modelMap[model],
+      requestAlias: model,
+      family: resolveClaudeFamily(model),
+    };
+  }
+
+  // 2. Date-stripped map hit (same caveat).
+  if (
+    stripped !== model
+    && config.modelMap[stripped]
+    && !routesToAnthropicWithoutKey(stripped)
+  ) {
+    return {
+      upstreamModel: config.modelMap[stripped],
+      requestAlias: stripped,
+      family: resolveClaudeFamily(stripped),
+    };
+  }
+
+  // 3. Family fallback when Anthropic has no key.
+  const family = resolveClaudeFamily(model) || resolveClaudeFamily(stripped);
+  if (family && !anthropicHasKey) {
+    const fallbackAlias = config.claudeFamilyFallback?.[family];
+    if (fallbackAlias && config.modelMap[fallbackAlias]) {
+      return {
+        upstreamModel: config.modelMap[fallbackAlias],
+        requestAlias: fallbackAlias,
+        family,
+      };
+    }
+  }
+
+  // 4. Last resort: if exact or stripped hit exists (even when it would route
+  //    to Anthropic-without-key), use it. The forwarded request will fail at
+  //    the upstream stage, but at least we don't return the raw dated name
+  //    that no provider knows about.
+  if (config.modelMap[model]) {
+    return {
+      upstreamModel: config.modelMap[model],
+      requestAlias: model,
+      family: resolveClaudeFamily(model),
+    };
+  }
+  if (stripped !== model && config.modelMap[stripped]) {
+    return {
+      upstreamModel: config.modelMap[stripped],
+      requestAlias: stripped,
+      family: resolveClaudeFamily(stripped),
+    };
+  }
+
+  // 5. Pass through.
+  return {
+    upstreamModel: model,
+    requestAlias: model,
+    family,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Config loading
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function loadConfig(env = process.env) {
   env = mergeAdvancedEnv(env);
 
@@ -259,6 +403,13 @@ export function loadConfig(env = process.env) {
     ...DEFAULT_MODEL_ROUTES,
     ...parseStringMap(env.MODEL_ROUTES, 'MODEL_ROUTES'),
   });
+
+  const claudeFamilyFallback = {
+    ...DEFAULT_CLAUDE_FAMILY_FALLBACK,
+    ...(env.CLAUDE_HAIKU_MODEL ? { haiku: env.CLAUDE_HAIKU_MODEL } : {}),
+    ...(env.CLAUDE_SONNET_MODEL ? { sonnet: env.CLAUDE_SONNET_MODEL } : {}),
+    ...(env.CLAUDE_OPUS_MODEL ? { opus: env.CLAUDE_OPUS_MODEL } : {}),
+  };
 
   return {
     port,
@@ -353,6 +504,7 @@ export function loadConfig(env = process.env) {
     modelMap,
     modelAliases,
     modelRoutes,
+    claudeFamilyFallback,
     rewriteResponses: parseBoolean(env.REWRITE_RESPONSES, true),
     requestBodyLimitBytes: parseInteger(
       env.REQUEST_BODY_LIMIT_BYTES,
@@ -361,11 +513,25 @@ export function loadConfig(env = process.env) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Server
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function createProxyServer(config = loadConfig()) {
   const normalizedConfig = normalizeConfig(config);
 
   return http.createServer(async (clientReq, clientRes) => {
+    const requestStart = Date.now();
+
+    debugBlock('INCOMING REQUEST', [
+      `Method: ${clientReq.method}`,
+      `URL: ${clientReq.url}`,
+      `User-Agent: ${clientReq.headers['user-agent'] || ''}`,
+      `Content-Type: ${clientReq.headers['content-type'] || ''}`,
+    ]);
+
     try {
+      // 1. Local health check.
       if (clientReq.method === 'GET' && clientReq.url === '/healthz') {
         sendJson(clientRes, 200, {
           ok: true,
@@ -375,13 +541,24 @@ export function createProxyServer(config = loadConfig()) {
           modelMap: normalizedConfig.modelMap,
           modelAliases: normalizedConfig.modelAliases,
           modelRoutes: normalizedConfig.modelRoutes,
+          claudeFamilyFallback: normalizedConfig.claudeFamilyFallback,
           rewriteResponses: normalizedConfig.rewriteResponses,
         });
         return;
       }
 
+      // 2. Local /v1/models discovery (Anthropic-compatible shape).
       if (clientReq.method === 'GET' && isModelsRequest(clientReq.url)) {
         handleModelsRequest(clientReq, clientRes, normalizedConfig);
+        return;
+      }
+
+      // 3. /v1/messages/count_tokens — answered locally with a character heuristic.
+      //    OpenAI-compatible upstreams (Ollama, OpenAI, etc.) don't expose this
+      //    endpoint, and the Anthropic upstream's response would be wrong because
+      //    the upstream model is different from the alias the client asked about.
+      if (clientReq.method === 'POST' && isCountTokensRequest(clientReq.url)) {
+        await handleCountTokensRequest(clientReq, clientRes, normalizedConfig);
         return;
       }
 
@@ -408,9 +585,11 @@ export function createProxyServer(config = loadConfig()) {
         rewriteResponses: normalizedConfig.rewriteResponses,
         responseModelMap: preparedRequest.responseModelMap,
         provider: preparedRequest.provider,
+        requestStart,
       });
     } catch (error) {
       const statusCode = error.statusCode || 500;
+      console.error(`[claude-model-proxy] ${statusCode} ${error.message}`);
       sendJson(clientRes, statusCode, {
         error: String(error.message || error),
       });
@@ -418,9 +597,19 @@ export function createProxyServer(config = loadConfig()) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Local endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+
 function isModelsRequest(rawUrl = '/') {
   const pathname = new URL(rawUrl, 'http://127.0.0.1').pathname;
   return pathname === '/v1/models' || pathname.startsWith('/v1/models/');
+}
+
+function isCountTokensRequest(rawUrl = '/') {
+  const pathname = new URL(rawUrl, 'http://127.0.0.1').pathname;
+  return pathname === '/v1/messages/count_tokens'
+    || pathname.endsWith('/v1/messages/count_tokens');
 }
 
 function handleModelsRequest(req, res, config) {
@@ -468,9 +657,6 @@ function toModelDisplayName(id) {
     .split('-')
     .filter(Boolean)
     .map((segment) => {
-      if (!segment) {
-        return segment;
-      }
       if (/^v?\d/.test(segment)) {
         return segment;
       }
@@ -479,35 +665,131 @@ function toModelDisplayName(id) {
     .join(' ');
 }
 
+async function handleCountTokensRequest(req, res, config) {
+  const rawBody = await readRequestBody(req, config.requestBodyLimitBytes);
+  let payload = {};
+  if (rawBody.length > 0) {
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      payload = {};
+    }
+  }
+
+  const inputTokens = estimateAnthropicTokenCount(payload);
+  debugBlock('COUNT TOKENS (LOCAL)', [
+    `Model: ${payload.model || '(none)'}`,
+    `Estimated input_tokens: ${inputTokens}`,
+  ]);
+
+  sendJson(res, 200, { input_tokens: inputTokens });
+}
+
+/**
+ * Heuristic Anthropic token count: total character length of all text content
+ * divided by 4 (roughly the ratio for English; close enough for cost-of-prompt
+ * estimates that drive client-side decisions like "should we summarize?").
+ */
+function estimateAnthropicTokenCount(payload) {
+  const parts = [];
+
+  for (const block of toArray(payload.system)) {
+    if (typeof block === 'string') parts.push(block);
+    else if (block?.text) parts.push(block.text);
+  }
+
+  for (const message of toArray(payload.messages)) {
+    const content = message?.content;
+    if (typeof content === 'string') {
+      parts.push(content);
+    } else if (Array.isArray(content)) {
+      for (const block of content) {
+        if (typeof block === 'string') parts.push(block);
+        else if (block?.text) parts.push(block.text);
+        else if (block?.content) parts.push(stringifyUnknownContent(block.content));
+      }
+    }
+  }
+
+  for (const tool of toArray(payload.tools)) {
+    if (tool?.name) parts.push(tool.name);
+    if (tool?.description) parts.push(tool.description);
+    if (tool?.input_schema) parts.push(JSON.stringify(tool.input_schema));
+  }
+
+  const totalChars = parts.reduce((sum, value) => sum + (value?.length || 0), 0);
+  return Math.max(1, Math.ceil(totalChars / 4));
+}
+
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+  return [value];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Forwarded requests
+// ─────────────────────────────────────────────────────────────────────────────
+
 function prepareRequest(rawBody, contentType, config) {
   if (rawBody.length === 0 || !isJsonContentType(contentType)) {
     return {
       body: rawBody,
-      provider: resolveProvider('', config),
+      provider: resolveProvider('', '', config),
       responseModelMap: config.modelAliases,
     };
   }
 
   const text = rawBody.toString('utf8');
-  const parsed = JSON.parse(text);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    const err = new Error(`Request body is not valid JSON: ${error.message}`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Pre-resolve the primary request model using the smart resolver so dated
+  // Claude names and family fallbacks are honored before the rest of the body
+  // is rewritten.
+  const primaryRequestModel = typeof parsed?.model === 'string' ? parsed.model : '';
+  const primaryResolution = resolveModelForUpstream(primaryRequestModel, config);
+  const requestAlias = primaryResolution.requestAlias || primaryRequestModel;
+
+  // Rewrite all `model`/`id`/... values in the body via the modelMap, and then
+  // overwrite the primary model with the upstream id from the smart resolver so
+  // it picks up date-strip + family fallbacks even when the modelMap doesn't
+  // contain the dated alias.
   const rewritten = rewriteModelValues(parsed, config.modelMap);
+  if (primaryRequestModel && rewritten && typeof rewritten === 'object') {
+    rewritten.model = primaryResolution.upstreamModel;
+  }
+
   const requestModels = collectModelValues(parsed);
   const upstreamModels = collectModelValues(rewritten);
-  const routeModel = upstreamModels[0] || requestModels[0] || '';
-  const provider = resolveProvider(
-    routeModel,
-    config,
-    upstreamModels.length > 0,
-    requestModels[0] || '',
-  );
+  const upstreamModel = primaryResolution.upstreamModel
+    || upstreamModels[0]
+    || requestAlias;
+
+  const provider = resolveProvider(upstreamModel, requestAlias, config);
+
+  debugBlock('MODEL ROUTING', [
+    `Incoming model: ${primaryRequestModel || '(none)'}`,
+    `Resolved request alias: ${requestAlias || '(none)'}`,
+    `Upstream model: ${upstreamModel || '(none)'}`,
+    `Family fallback: ${primaryResolution.family || 'n/a'}`,
+    `Provider: ${provider?.name || ''} (${provider?.upstreamBaseUrl?.host || ''})`,
+    `Format: ${provider?.format || ''}`,
+  ]);
 
   return {
     body: formatRequestBody(rewritten, provider),
     provider,
     responseModelMap: buildResponseModelMap(
-      upstreamModels,
+      [upstreamModel, ...upstreamModels],
       config.modelAliases,
-      requestModels,
+      [requestAlias, ...requestModels],
       config.modelMap,
     ),
   };
@@ -522,8 +804,16 @@ function forwardRequest({
   rewriteResponses,
   responseModelMap,
   provider,
+  requestStart,
 }) {
   const transport = target.protocol === 'https:' ? https : http;
+
+  debugBlock('FORWARDING REQUEST', [
+    `Method: ${method}`,
+    `Target: ${target.href}`,
+    `Body Size: ${body.length}`,
+  ]);
+
   const upstreamReq = transport.request(
     {
       protocol: target.protocol,
@@ -533,14 +823,23 @@ function forwardRequest({
       path: `${target.pathname}${target.search}`,
       headers,
     },
-    (upstreamRes) => handleUpstreamResponse(upstreamRes, clientRes, {
-      rewriteResponses,
-      responseModelMap,
-      provider,
-    }),
+    (upstreamRes) => {
+      const duration = Date.now() - (requestStart || Date.now());
+      debugBlock('UPSTREAM RESPONSE', [
+        `Duration: ${duration}ms`,
+        `Status: ${upstreamRes.statusCode} ${upstreamRes.statusMessage || ''}`,
+        `Content-Type: ${upstreamRes.headers['content-type'] || ''}`,
+      ]);
+      handleUpstreamResponse(upstreamRes, clientRes, {
+        rewriteResponses,
+        responseModelMap,
+        provider,
+      });
+    },
   );
 
   upstreamReq.on('error', (error) => {
+    console.error(`[claude-model-proxy] upstream error: ${error.message}`);
     if (!clientRes.headersSent) {
       sendJson(clientRes, 502, {
         error: `Upstream request failed: ${error.message}`,
@@ -572,6 +871,11 @@ function handleUpstreamResponse(upstreamRes, clientRes, config) {
   if (config.rewriteResponses && isJsonContentType(contentType)) {
     collectResponse(upstreamRes)
       .then((body) => {
+        if (!isSuccessfulStatus(upstreamRes.statusCode) && DEBUG) {
+          console.log('\n========== UPSTREAM ERROR BODY ==========');
+          console.log(body.toString('utf8'));
+          console.log('=========================================\n');
+        }
         const rewritten = rewriteJsonResponseBody(body, config.responseModelMap);
         headers['content-length'] = String(rewritten.length);
         clientRes.writeHead(upstreamRes.statusCode || 502, upstreamRes.statusMessage, headers);
@@ -603,7 +907,6 @@ function formatRequestBody(rewrittenBody, provider) {
   if (provider.format === 'openai-chat') {
     return Buffer.from(JSON.stringify(toOpenAIChatRequest(rewrittenBody, provider)));
   }
-
   return Buffer.from(JSON.stringify(rewrittenBody));
 }
 
@@ -713,50 +1016,34 @@ function toTextContent(content) {
   if (typeof content === 'string') {
     return content;
   }
-
   if (Array.isArray(content)) {
     return content.map((item) => {
-      if (typeof item === 'string') {
-        return item;
-      }
-      if (item?.type === 'text') {
-        return item.text || '';
-      }
+      if (typeof item === 'string') return item;
+      if (item?.type === 'text') return item.text || '';
       return stringifyUnknownContent(item);
     }).join('');
   }
-
   return stringifyUnknownContent(content);
 }
 
 function stringifyUnknownContent(value) {
-  if (value === undefined || value === null) {
-    return '';
-  }
-
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
 }
 
 function isEmptyOpenAIContent(content) {
-  if (Array.isArray(content)) {
-    return content.length === 0;
-  }
+  if (Array.isArray(content)) return content.length === 0;
   return content === '';
 }
 
 function copyDefined(target, source, key) {
-  if (source[key] !== undefined) {
-    target[key] = source[key];
-  }
+  if (source[key] !== undefined) target[key] = source[key];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OpenAI-Chat response → Anthropic Messages response
+// ─────────────────────────────────────────────────────────────────────────────
 
 function handleOpenAIChatResponse(upstreamRes, clientRes, config) {
   const responseModelMap = config.rewriteResponses ? config.responseModelMap : {};
@@ -816,32 +1103,17 @@ function convertOpenAIChatJsonResponse(body, responseModelMap) {
 }
 
 function openAIMessageText(message) {
-  if (!message) {
-    return '';
-  }
-
-  if (typeof message.content === 'string') {
-    return message.content;
-  }
-
+  if (!message) return '';
+  if (typeof message.content === 'string') return message.content;
   if (Array.isArray(message.content)) {
     return message.content.map((part) => {
-      if (typeof part === 'string') {
-        return part;
-      }
-      if (part?.type === 'text') {
-        return part.text || '';
-      }
-      if (part?.text) {
-        return String(part.text);
-      }
-      if (part?.refusal) {
-        return String(part.refusal);
-      }
+      if (typeof part === 'string') return part;
+      if (part?.type === 'text') return part.text || '';
+      if (part?.text) return String(part.text);
+      if (part?.refusal) return String(part.refusal);
       return '';
     }).join('');
   }
-
   return message.refusal || '';
 }
 
@@ -855,10 +1127,7 @@ function createOpenAIChatSseToAnthropicStream(responseModelMap) {
     id: 'msg_openai_proxy',
     model: '',
     stopReason: 'end_turn',
-    usage: {
-      input_tokens: 0,
-      output_tokens: 0,
-    },
+    usage: { input_tokens: 0, output_tokens: 0 },
   };
 
   return new Transform({
@@ -879,15 +1148,11 @@ function createOpenAIChatSseToAnthropicStream(responseModelMap) {
 function processOpenAISseBuffer(stream, state, responseModelMap, flush = false) {
   while (true) {
     const separatorIndex = state.buffer.indexOf('\n\n');
-    if (separatorIndex === -1) {
-      break;
-    }
-
+    if (separatorIndex === -1) break;
     const eventText = state.buffer.slice(0, separatorIndex);
     state.buffer = state.buffer.slice(separatorIndex + 2);
     handleOpenAISseEvent(stream, eventText, state, responseModelMap);
   }
-
   if (flush && state.buffer.trim()) {
     handleOpenAISseEvent(stream, state.buffer, state, responseModelMap);
     state.buffer = '';
@@ -902,9 +1167,7 @@ function handleOpenAISseEvent(stream, eventText, state, responseModelMap) {
     .join('\n')
     .trim();
 
-  if (!data) {
-    return;
-  }
+  if (!data) return;
 
   if (data === '[DONE]') {
     stopAnthropicStream(stream, state);
@@ -912,25 +1175,17 @@ function handleOpenAISseEvent(stream, eventText, state, responseModelMap) {
   }
 
   let parsed;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return;
-  }
+  try { parsed = JSON.parse(data); } catch { return; }
 
   startAnthropicStream(stream, state, parsed, responseModelMap);
 
   const choice = parsed.choices?.[0];
   if (!choice) {
-    if (parsed.usage) {
-      state.usage = toAnthropicUsage(parsed.usage);
-    }
+    if (parsed.usage) state.usage = toAnthropicUsage(parsed.usage);
     return;
   }
 
-  if (choice.finish_reason) {
-    state.stopReason = toAnthropicStopReason(choice.finish_reason);
-  }
+  if (choice.finish_reason) state.stopReason = toAnthropicStopReason(choice.finish_reason);
 
   const text = openAIStreamDeltaText(choice.delta);
   if (text) {
@@ -938,34 +1193,22 @@ function handleOpenAISseEvent(stream, eventText, state, responseModelMap) {
       pushSse(stream, 'content_block_start', {
         type: 'content_block_start',
         index: 0,
-        content_block: {
-          type: 'text',
-          text: '',
-        },
+        content_block: { type: 'text', text: '' },
       });
       state.contentBlockStarted = true;
     }
-
     pushSse(stream, 'content_block_delta', {
       type: 'content_block_delta',
       index: 0,
-      delta: {
-        type: 'text_delta',
-        text,
-      },
+      delta: { type: 'text_delta', text },
     });
   }
 
-  if (parsed.usage) {
-    state.usage = toAnthropicUsage(parsed.usage);
-  }
+  if (parsed.usage) state.usage = toAnthropicUsage(parsed.usage);
 }
 
 function startAnthropicStream(stream, state, chunk, responseModelMap) {
-  if (state.messageStarted) {
-    return;
-  }
-
+  if (state.messageStarted) return;
   state.id = chunk.id || state.id;
   state.model = rewriteModelName(chunk.model || state.model, responseModelMap);
   pushSse(stream, 'message_start', {
@@ -985,34 +1228,17 @@ function startAnthropicStream(stream, state, chunk, responseModelMap) {
 }
 
 function stopAnthropicStream(stream, state) {
-  if (state.stopped) {
-    return;
-  }
-
-  if (!state.messageStarted) {
-    startAnthropicStream(stream, state, {}, {});
-  }
-
+  if (state.stopped) return;
+  if (!state.messageStarted) startAnthropicStream(stream, state, {}, {});
   if (state.contentBlockStarted) {
-    pushSse(stream, 'content_block_stop', {
-      type: 'content_block_stop',
-      index: 0,
-    });
+    pushSse(stream, 'content_block_stop', { type: 'content_block_stop', index: 0 });
   }
-
   pushSse(stream, 'message_delta', {
     type: 'message_delta',
-    delta: {
-      stop_reason: state.stopReason,
-      stop_sequence: null,
-    },
-    usage: {
-      output_tokens: state.usage.output_tokens || 0,
-    },
+    delta: { stop_reason: state.stopReason, stop_sequence: null },
+    usage: { output_tokens: state.usage.output_tokens || 0 },
   });
-  pushSse(stream, 'message_stop', {
-    type: 'message_stop',
-  });
+  pushSse(stream, 'message_stop', { type: 'message_stop' });
   state.stopped = true;
 }
 
@@ -1021,29 +1247,16 @@ function pushSse(stream, event, payload) {
 }
 
 function openAIStreamDeltaText(delta) {
-  if (!delta) {
-    return '';
-  }
-
-  if (typeof delta.content === 'string') {
-    return delta.content;
-  }
-
+  if (!delta) return '';
+  if (typeof delta.content === 'string') return delta.content;
   if (Array.isArray(delta.content)) {
     return delta.content.map((part) => {
-      if (typeof part === 'string') {
-        return part;
-      }
-      if (part?.type === 'text') {
-        return part.text || '';
-      }
-      if (part?.text) {
-        return String(part.text);
-      }
+      if (typeof part === 'string') return part;
+      if (part?.type === 'text') return part.text || '';
+      if (part?.text) return String(part.text);
       return '';
     }).join('');
   }
-
   return '';
 }
 
@@ -1055,14 +1268,8 @@ function toAnthropicUsage(usage = {}) {
 }
 
 function toAnthropicStopReason(reason) {
-  if (reason === 'length') {
-    return 'max_tokens';
-  }
-
-  if (reason === 'tool_calls' || reason === 'function_call') {
-    return 'tool_use';
-  }
-
+  if (reason === 'length') return 'max_tokens';
+  if (reason === 'tool_calls' || reason === 'function_call') return 'tool_use';
   return 'end_turn';
 }
 
@@ -1071,18 +1278,10 @@ function rewriteModelName(model, responseModelMap) {
 }
 
 function rewriteJsonResponseBody(body, responseModelMap) {
-  if (body.length === 0) {
-    return body;
-  }
-
+  if (body.length === 0) return body;
   const text = body.toString('utf8');
   let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return body;
-  }
-
+  try { parsed = JSON.parse(text); } catch { return body; }
   const rewritten = rewriteModelValues(parsed, responseModelMap);
   return Buffer.from(JSON.stringify(rewritten));
 }
@@ -1094,11 +1293,9 @@ export function rewriteModelValues(value, modelMap, keyName = '') {
     }
     return value;
   }
-
   if (Array.isArray(value)) {
     return value.map((item) => rewriteModelValues(item, modelMap, keyName));
   }
-
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
@@ -1107,7 +1304,6 @@ export function rewriteModelValues(value, modelMap, keyName = '') {
       ]),
     );
   }
-
   return value;
 }
 
@@ -1115,16 +1311,11 @@ export function createReplaceStream(modelMap) {
   const entries = Object.entries(modelMap).sort((a, b) => b[0].length - a[0].length);
   const decoder = new StringDecoder('utf8');
   let buffer = '';
-
   return new Transform({
     transform(chunk, _encoding, callback) {
       buffer += decoder.write(chunk);
       const emitEnd = buffer.lastIndexOf('\n');
-      if (emitEnd === -1) {
-        callback();
-        return;
-      }
-
+      if (emitEnd === -1) { callback(); return; }
       const emitText = replaceAllModels(buffer.slice(0, emitEnd + 1), entries);
       buffer = buffer.slice(emitEnd + 1);
       this.push(emitText);
@@ -1148,33 +1339,33 @@ function replaceAllModels(text, entries) {
 
 function collectModelValues(value, keyName = '') {
   if (typeof value === 'string') {
-    return MODEL_VALUE_KEYS.has(keyName) || MODEL_ARRAY_KEYS.has(keyName)
-      ? [value]
-      : [];
+    return MODEL_VALUE_KEYS.has(keyName) || MODEL_ARRAY_KEYS.has(keyName) ? [value] : [];
   }
-
   if (Array.isArray(value)) {
     return value.flatMap((item) => collectModelValues(item, keyName));
   }
-
   if (value && typeof value === 'object') {
     return Object.entries(value).flatMap(([key, item]) => collectModelValues(item, key));
   }
-
   return [];
 }
 
 function buildResponseModelMap(upstreamModels, modelAliases, requestModels = [], modelMap = {}) {
   const selected = {};
 
+  // Pair each request alias with the upstream id it produced, so responses are
+  // rewritten back to the exact alias the client asked for.
   for (const requestModel of requestModels) {
+    if (!requestModel) continue;
     const upstreamModel = modelMap[requestModel] || requestModel;
     if (upstreamModels.includes(upstreamModel)) {
       selected[upstreamModel] = requestModel;
     }
   }
 
+  // Fill in any remaining upstream ids from the global alias table.
   for (const model of upstreamModels) {
+    if (!model) continue;
     if (!selected[model] && modelAliases[model]) {
       selected[model] = modelAliases[model];
     }
@@ -1226,9 +1417,7 @@ function sanitizeResponseHeaders(upstreamHeaders) {
   const headers = {};
   for (const [key, value] of Object.entries(upstreamHeaders)) {
     const lowerKey = key.toLowerCase();
-    if (HOP_BY_HOP_HEADERS.has(lowerKey)) {
-      continue;
-    }
+    if (HOP_BY_HOP_HEADERS.has(lowerKey)) continue;
     headers[lowerKey] = value;
   }
   delete headers['content-encoding'];
@@ -1236,14 +1425,49 @@ function sanitizeResponseHeaders(upstreamHeaders) {
   return headers;
 }
 
+/**
+ * Build the upstream URL for a forwarded request.
+ *
+ * Source paths we care about:
+ *   /v1/messages                       (Anthropic Messages)
+ *   /v1/messages/count_tokens          (Anthropic count-tokens — handled locally
+ *                                       before we get here, but we still guard)
+ *
+ * For openai-chat providers, /v1/messages is rewritten to /chat/completions.
+ *
+ * Path-prefix handling: the upstream base URL may already include a /v1 prefix
+ * (e.g. https://ollama.com/v1). To avoid producing /v1/v1/... when the source
+ * path also starts with /v1, we strip the leading /v1 from the source path
+ * before concatenating it with the base.
+ */
 function buildTargetUrl(provider, incomingUrl) {
   const source = new URL(incomingUrl, 'http://localhost');
   const target = new URL(provider.upstreamBaseUrl.href);
   const basePath = target.pathname.replace(/\/$/, '');
-  const targetPath = provider.format === 'openai-chat' && source.pathname.endsWith('/messages')
-    ? '/chat/completions'
-    : source.pathname;
-  target.pathname = `${basePath}${targetPath}`.replace(/\/{2,}/g, '/');
+
+  let sourcePath = source.pathname;
+
+  if (provider.format === 'openai-chat') {
+    if (sourcePath === '/v1/messages' || sourcePath.endsWith('/v1/messages')) {
+      sourcePath = '/chat/completions';
+    } else if (
+      sourcePath === '/v1/messages/count_tokens'
+      || sourcePath.endsWith('/v1/messages/count_tokens')
+    ) {
+      // Already handled locally; if we ever reach here, route to a sensible
+      // endpoint instead of /v1/v1/messages/count_tokens.
+      sourcePath = '/chat/completions';
+    } else if (basePath.endsWith('/v1') && sourcePath.startsWith('/v1/')) {
+      // Avoid producing /v1/v1/... for any other /v1/* call when the base URL
+      // is already /v1.
+      sourcePath = sourcePath.slice(3);
+    }
+  } else if (basePath.endsWith('/v1') && sourcePath.startsWith('/v1/')) {
+    // Same guard for Anthropic-compatible upstreams whose base URL ends in /v1.
+    sourcePath = sourcePath.slice(3);
+  }
+
+  target.pathname = `${basePath}${sourcePath}`.replace(/\/{2,}/g, '/');
   target.search = provider.format === 'openai-chat' ? '' : source.search;
   return target;
 }
@@ -1251,7 +1475,6 @@ function buildTargetUrl(provider, incomingUrl) {
 async function readRequestBody(req, limitBytes) {
   const chunks = [];
   let totalLength = 0;
-
   for await (const chunk of req) {
     totalLength += chunk.length;
     if (totalLength > limitBytes) {
@@ -1261,15 +1484,12 @@ async function readRequestBody(req, limitBytes) {
     }
     chunks.push(chunk);
   }
-
   return Buffer.concat(chunks);
 }
 
 async function collectResponse(res) {
   const chunks = [];
-  for await (const chunk of res) {
-    chunks.push(chunk);
-  }
+  for await (const chunk of res) chunks.push(chunk);
   return Buffer.concat(chunks);
 }
 
@@ -1283,27 +1503,17 @@ function sendJson(res, statusCode, payload) {
 }
 
 function mergeAdvancedEnv(env) {
-  return {
-    ...parseAdvancedEnv(env.ADVANCED_ENV),
-    ...env,
-  };
+  return { ...parseAdvancedEnv(env.ADVANCED_ENV), ...env };
 }
 
 function parseAdvancedEnv(raw) {
-  if (!raw) {
-    return {};
-  }
-
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return {};
-  }
-
+  if (!raw) return {};
+  const trimmed = String(raw).trim();
+  if (!trimmed) return {};
   const parsed = JSON.parse(trimmed);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('ADVANCED_ENV must be a JSON object');
   }
-
   return Object.fromEntries(
     Object.entries(parsed).map(([key, value]) => {
       if (!key || value === null || typeof value === 'object') {
@@ -1315,18 +1525,25 @@ function parseAdvancedEnv(raw) {
 }
 
 function parseStringMap(raw, name) {
-  if (!raw) {
-    return {};
-  }
-
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return {};
-  }
+  if (!raw) return {};
+  let trimmed = String(raw).trim();
+  if (!trimmed) return {};
 
   if (trimmed.startsWith('{')) {
-    const parsed = JSON.parse(trimmed);
-    return normalizeStringMap(parsed, name);
+    // Tolerate dotenv multi-line JSON: collapse newlines, drop trailing commas.
+    trimmed = trimmed
+      .replace(/\r?\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/,\s*}/g, '}');
+    try {
+      const parsed = JSON.parse(trimmed);
+      return normalizeStringMap(parsed, name);
+    } catch (error) {
+      console.error(`\n[claude-model-proxy] ERROR: ${name} is not valid JSON.`);
+      console.error(`  Raw value (first 300 chars): ${String(raw).slice(0, 300)}`);
+      console.error(`  JSON error: ${error.message}\n`);
+      throw new Error(`${name} contains invalid JSON`);
+    }
   }
 
   const parsed = Object.fromEntries(
@@ -1349,7 +1566,6 @@ function normalizeStringMap(value, name) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${name} must be a JSON object or from=to list`);
   }
-
   return Object.fromEntries(
     Object.entries(value).map(([from, to]) => {
       if (!from || typeof to !== 'string' || !to) {
@@ -1379,6 +1595,7 @@ function normalizeConfig(config) {
     modelMap: config.modelMap || DEFAULT_MODEL_MAP,
     modelAliases: config.modelAliases || config.reverseModelMap || DEFAULT_MODEL_ALIASES,
     modelRoutes: normalizeProviderRoutes(config.modelRoutes || DEFAULT_MODEL_ROUTES),
+    claudeFamilyFallback: config.claudeFamilyFallback || DEFAULT_CLAUDE_FAMILY_FALLBACK,
     rewriteResponses: config.rewriteResponses ?? true,
     requestBodyLimitBytes: config.requestBodyLimitBytes || DEFAULT_REQUEST_BODY_LIMIT_BYTES,
   };
@@ -1389,17 +1606,20 @@ function normalizeProviders(config) {
     return Object.fromEntries(
       Object.entries(config.providers).map(([name, provider]) => [
         normalizeProviderName(name),
-        normalizeProvider(provider),
+        { ...normalizeProvider(provider), name: normalizeProviderName(name) },
       ]),
     );
   }
 
   if (config.upstreamBaseUrl) {
     return {
-      deepseek: normalizeProvider({
-        upstreamBaseUrl: config.upstreamBaseUrl,
-        upstreamApiKey: config.upstreamApiKey || '',
-      }),
+      deepseek: {
+        ...normalizeProvider({
+          upstreamBaseUrl: config.upstreamBaseUrl,
+          upstreamApiKey: config.upstreamApiKey || '',
+        }),
+        name: 'deepseek',
+      },
     };
   }
 
@@ -1410,7 +1630,6 @@ function normalizeProvider(provider) {
   if (!provider?.upstreamBaseUrl) {
     throw new Error('Provider upstreamBaseUrl is required');
   }
-
   return {
     upstreamBaseUrl: provider.upstreamBaseUrl instanceof URL
       ? provider.upstreamBaseUrl
@@ -1425,17 +1644,13 @@ function normalizeProvider(provider) {
 
 function normalizeProviderFormat(format) {
   const normalized = String(format || '').trim().toLowerCase();
-  if (normalized === 'anthropic' || normalized === 'openai-chat') {
-    return normalized;
-  }
+  if (normalized === 'anthropic' || normalized === 'openai-chat') return normalized;
   throw new Error(`Unsupported provider format: ${format}`);
 }
 
 function normalizeAuthScheme(authScheme) {
   const normalized = String(authScheme || '').trim().toLowerCase();
-  if (normalized === 'bearer' || normalized === 'x-api-key') {
-    return normalized;
-  }
+  if (normalized === 'bearer' || normalized === 'x-api-key') return normalized;
   throw new Error(`Unsupported auth scheme: ${authScheme}`);
 }
 
@@ -1450,21 +1665,28 @@ function normalizeProviderRoutes(modelRoutes) {
 
 function normalizeProviderName(provider) {
   const normalized = String(provider || '').trim().toLowerCase();
-  return normalized === 'kimi' ? 'moonshot' : normalized;
+  if (normalized === 'kimi') return 'moonshot';
+  return normalized;
 }
 
-function resolveProvider(model, config, modelIsAlreadyMapped = false, requestModel = '') {
-  const upstreamModel = modelIsAlreadyMapped ? model : config.modelMap[model] || model;
-  const providerName = (requestModel && config.modelRoutes[requestModel])
-    || config.modelRoutes[upstreamModel]
-    || config.modelRoutes[model]
+/**
+ * Decide which provider handles a given (upstreamModel, requestAlias).
+ *
+ * Precedence:
+ *   1. modelRoutes[requestAlias] — alias-specific override (lets
+ *      claude-glm-4.6 → Z.AI and claude-ollama-glm-4.6 → Ollama coexist).
+ *   2. modelRoutes[upstreamModel] — upstream-id route.
+ *   3. config.defaultProvider.
+ */
+function resolveProvider(upstreamModel, requestAlias, config) {
+  const providerName = (requestAlias && config.modelRoutes[requestAlias])
+    || (upstreamModel && config.modelRoutes[upstreamModel])
     || config.defaultProvider;
-  const provider = config.providers[providerName];
 
+  const provider = config.providers[providerName];
   if (!provider) {
     throw new Error(`No upstream provider configured for ${providerName}`);
   }
-
   return provider;
 }
 
@@ -1483,10 +1705,7 @@ function getProviderStatus(providers) {
 }
 
 function parseInteger(raw, fallback) {
-  if (raw === undefined || raw === null || raw === '') {
-    return fallback;
-  }
-
+  if (raw === undefined || raw === null || raw === '') return fallback;
   const parsed = Number.parseInt(String(raw), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error(`Invalid positive integer: ${raw}`);
@@ -1495,18 +1714,10 @@ function parseInteger(raw, fallback) {
 }
 
 function parseBoolean(raw, fallback) {
-  if (raw === undefined || raw === null || raw === '') {
-    return fallback;
-  }
-
-  if (['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase())) {
-    return true;
-  }
-
-  if (['0', 'false', 'no', 'off'].includes(String(raw).toLowerCase())) {
-    return false;
-  }
-
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const lower = String(raw).toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(lower)) return true;
+  if (['0', 'false', 'no', 'off'].includes(lower)) return false;
   throw new Error(`Invalid boolean: ${raw}`);
 }
 
@@ -1529,23 +1740,53 @@ function redactUrl(url) {
   return redacted.href;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CLI entry
+// ─────────────────────────────────────────────────────────────────────────────
+
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isMain) {
-  const config = loadConfig();
-  const server = createProxyServer(config);
-  server.on('error', (error) => {
-    if (error.code === 'EADDRINUSE') {
-      console.error(`Claude model proxy port is already in use: ${config.port}`);
-      process.exit(0);
-    }
-    console.error(`Claude model proxy failed: ${error.message}`);
+  try {
+    const config = loadConfig();
+    const server = createProxyServer(config);
+
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`[claude-model-proxy] port ${config.port} is already in use`);
+        process.exit(0);
+      }
+      console.error(`[claude-model-proxy] failed: ${error.message}`);
+      process.exit(1);
+    });
+
+    server.listen(config.port, '127.0.0.1', () => {
+      console.log('========================================');
+      console.log(' CLAUDE MODEL PROXY');
+      console.log('========================================');
+      console.log(`Listening:        http://127.0.0.1:${config.port}`);
+      console.log(`Gateway base URL: ${config.baseUrl}`);
+      console.log(`Default provider: ${config.defaultProvider}`);
+      console.log(`Rewrite responses: ${config.rewriteResponses}`);
+      console.log(`Debug logging:    ${DEBUG ? 'on' : 'off'} (DEBUG_PROXY=true to enable)`);
+      console.log('----------------------------------------');
+      console.log(' Providers (✔ = API key set):');
+      for (const [name, provider] of Object.entries(config.providers)) {
+        const flag = provider.upstreamApiKey ? '✔' : ' ';
+        console.log(`  ${flag} ${name.padEnd(10)} ${provider.upstreamBaseUrl.href}  [${provider.format}]`);
+      }
+      console.log('----------------------------------------');
+      console.log(' Claude family fallback (used when ANTHROPIC_API_KEY is empty):');
+      for (const [family, alias] of Object.entries(config.claudeFamilyFallback)) {
+        const upstream = config.modelMap[alias] || alias;
+        console.log(`  ${family.padEnd(8)} → ${alias}  →  ${upstream}`);
+      }
+      console.log('----------------------------------------');
+      console.log(` Models exposed at /v1/models: ${Object.keys(config.modelMap).length}`);
+      console.log('========================================');
+    });
+  } catch (error) {
+    console.error(`[claude-model-proxy] startup failed: ${error.message}`);
     process.exit(1);
-  });
-  server.listen(config.port, '127.0.0.1', () => {
-    console.log(`Claude model proxy listening on http://127.0.0.1:${config.port}`);
-    console.log(`Gateway base URL: ${config.baseUrl}`);
-    console.log(`Providers: ${JSON.stringify(getProviderStatus(config.providers))}`);
-    console.log(`Model map: ${JSON.stringify(config.modelMap)}`);
-  });
+  }
 }

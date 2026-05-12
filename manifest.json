@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "claude-model-proxy",
   "display_name": "Claude Model Proxy",
-  "version": "0.1.0",
-  "description": "Runs a local proxy that routes Claude gateway model names to DeepSeek, Moonshot/Kimi, GLM, Xiaomi MiMo, OpenAI, Gemini, Qwen, Ollama Cloud, and Anthropic upstreams.",
-  "long_description": "Starts a local HTTP proxy for Claude Desktop gateway. Requests are routed by model name: claude-deepseek-v4-flash maps to deepseek-v4-flash on DeepSeek, claude-deepseek-v4-pro maps to deepseek-v4-pro on DeepSeek, claude-kimi-k2.6 maps to kimi-k2.6 on Moonshot/Kimi, claude-glm-* aliases use actual Z.AI GLM model names, claude-mimo-* aliases use actual Xiaomi MiMo model names, claude-gpt-* aliases use OpenAI Chat Completions, claude-gemini-* aliases use Gemini's OpenAI-compatible API, claude-qwen-* aliases use Alibaba Cloud Model Studio Qwen's OpenAI-compatible API, claude-ollama-* aliases use Ollama Cloud (Turbo) hosted models such as gpt-oss:120b, qwen3-coder:480b, kimi-k2:1t, and deepseek-v3.1:671b without requiring a local Ollama install, and original Claude model names use Anthropic Messages. The installer focuses on gateway, DeepSeek, Moonshot/Kimi, and Ollama Cloud settings; optional providers and mapping overrides can be supplied as advanced JSON.",
+  "version": "0.2.0",
+  "description": "Routes Claude Desktop gateway requests to DeepSeek, Moonshot/Kimi, GLM, Xiaomi MiMo, OpenAI, Gemini, Qwen, Ollama Cloud, or Anthropic upstreams. Includes smart fallbacks so Claude Desktop's internal Haiku/Sonnet/Opus calls work without an Anthropic key.",
+  "long_description": "Starts a local HTTP proxy for Claude Desktop's gateway feature. Requests are routed by model name: claude-ollama-* aliases use Ollama Cloud (Turbo), claude-deepseek-* aliases use DeepSeek, claude-kimi-* uses Moonshot/Kimi, claude-glm-* uses Z.AI, claude-mimo-* uses Xiaomi MiMo, claude-gpt-* uses OpenAI, claude-gemini-* uses Gemini, claude-qwen-* uses Qwen/DashScope, and the original Claude model names use Anthropic Messages. Date-suffixed Claude model names (e.g. claude-haiku-4-5-20251001) that Claude Desktop emits internally are auto-resolved to a configurable Ollama Cloud fallback when ANTHROPIC_API_KEY is empty. Handles /v1/messages, /v1/messages/count_tokens, and /v1/models. The installer asks only for the keys you'll actually use; everything else stays in the optional advanced JSON field.",
   "author": {
     "name": "Local"
   },
@@ -19,12 +19,16 @@
       "env": {
         "BASE_URL": "${user_config.base_url}",
         "PORT": "${user_config.port}",
+        "DEFAULT_PROVIDER": "${user_config.default_provider}",
         "DEEPSEEK_BASE_URL": "${user_config.deepseek_base_url}",
         "DEEPSEEK_API_KEY": "${user_config.deepseek_api_key}",
         "MOONSHOT_BASE_URL": "${user_config.moonshot_base_url}",
         "MOONSHOT_API_KEY": "${user_config.moonshot_api_key}",
         "OLLAMA_BASE_URL": "${user_config.ollama_base_url}",
         "OLLAMA_API_KEY": "${user_config.ollama_api_key}",
+        "CLAUDE_HAIKU_MODEL": "${user_config.claude_haiku_model}",
+        "CLAUDE_SONNET_MODEL": "${user_config.claude_sonnet_model}",
+        "CLAUDE_OPUS_MODEL": "${user_config.claude_opus_model}",
         "ADVANCED_ENV": "${user_config.advanced_env}"
       }
     }
@@ -46,7 +50,7 @@
           },
           "serverInfo": {
             "name": "claude-model-proxy",
-            "version": "0.1.0"
+            "version": "0.2.0"
           },
           "instructions": "This extension keeps a local model-name proxy running for Claude Desktop gateway requests. Use model_proxy_status to inspect runtime URL, provider key flags, and model routes."
         },
@@ -112,65 +116,93 @@
     "base_url": {
       "type": "string",
       "title": "Gateway Base URL",
-      "description": "The reachable URL configured in Claude Desktop gateway. Use the local loopback URL unless you separately configure DNS and TLS for a custom domain.",
+      "description": "The URL Claude Desktop calls. Leave on the local loopback default unless you've configured DNS/TLS for a custom domain.",
       "default": "http://127.0.0.1:8787",
       "required": true
     },
     "port": {
       "type": "number",
       "title": "Local Proxy Port",
-      "description": "Local port used by the extension's HTTP proxy.",
+      "description": "Local port the proxy listens on.",
       "default": 8787,
       "min": 1024,
       "max": 65535,
       "required": true
     },
-    "deepseek_base_url": {
+    "default_provider": {
       "type": "string",
-      "title": "DeepSeek Base URL",
-      "description": "DeepSeek-compatible API base URL.",
-      "default": "https://api.deepseek.com/anthropic",
-      "required": true
-    },
-    "deepseek_api_key": {
-      "type": "string",
-      "title": "DeepSeek API Key",
-      "description": "DEEPSEEK_API_KEY. Sent only to DeepSeek as Authorization: Bearer ...",
-      "sensitive": true,
-      "required": true
-    },
-    "moonshot_base_url": {
-      "type": "string",
-      "title": "Moonshot Base URL",
-      "description": "Moonshot/Kimi-compatible API base URL.",
-      "default": "https://api.moonshot.cn/anthropic",
-      "required": true
-    },
-    "moonshot_api_key": {
-      "type": "string",
-      "title": "Moonshot API Key",
-      "description": "MOONSHOT_API_KEY. Sent only to Moonshot/Kimi as Authorization: Bearer ...",
-      "sensitive": true,
-      "required": true
+      "title": "Default Provider",
+      "description": "Fallback provider for any model not in the routing table. For Ollama-only setups use 'ollama'. Valid values: ollama, deepseek, moonshot, glm, xiaomi, openai, gemini, qwen, anthropic.",
+      "default": "ollama",
+      "required": false
     },
     "ollama_base_url": {
       "type": "string",
       "title": "Ollama Cloud Base URL",
-      "description": "Ollama Cloud OpenAI-compatible base URL. Defaults to the official Turbo endpoint and does not require a local Ollama install.",
+      "description": "Ollama Cloud OpenAI-compatible base URL. Default points at hosted Ollama Cloud (Turbo) — no local Ollama install required.",
       "default": "https://ollama.com/v1",
       "required": false
     },
     "ollama_api_key": {
       "type": "string",
       "title": "Ollama Cloud API Key",
-      "description": "OLLAMA_API_KEY from https://ollama.com/settings/keys. Sent only to Ollama Cloud as Authorization: Bearer ...",
+      "description": "OLLAMA_API_KEY from https://ollama.com/settings/keys. Sent only to Ollama Cloud.",
+      "sensitive": true,
+      "required": false
+    },
+    "claude_haiku_model": {
+      "type": "string",
+      "title": "Claude Haiku Fallback Alias",
+      "description": "Claude alias to use when Claude Desktop asks for any claude-haiku-* model (including dated names like claude-haiku-4-5-20251001) and ANTHROPIC_API_KEY is empty. Defaults to a small, fast Ollama Cloud model.",
+      "default": "claude-ollama-qwen3-coder-next",
+      "required": false
+    },
+    "claude_sonnet_model": {
+      "type": "string",
+      "title": "Claude Sonnet Fallback Alias",
+      "description": "Claude alias to use when Claude Desktop asks for any claude-sonnet-* model and ANTHROPIC_API_KEY is empty.",
+      "default": "claude-ollama-qwen3-coder",
+      "required": false
+    },
+    "claude_opus_model": {
+      "type": "string",
+      "title": "Claude Opus Fallback Alias",
+      "description": "Claude alias to use when Claude Desktop asks for any claude-opus-* model and ANTHROPIC_API_KEY is empty.",
+      "default": "claude-ollama-gpt-oss-120b",
+      "required": false
+    },
+    "deepseek_base_url": {
+      "type": "string",
+      "title": "DeepSeek Base URL",
+      "description": "DeepSeek Anthropic-compatible API base URL. Leave blank if you aren't using DeepSeek.",
+      "default": "https://api.deepseek.com/anthropic",
+      "required": false
+    },
+    "deepseek_api_key": {
+      "type": "string",
+      "title": "DeepSeek API Key",
+      "description": "Optional. Sent only to DeepSeek.",
+      "sensitive": true,
+      "required": false
+    },
+    "moonshot_base_url": {
+      "type": "string",
+      "title": "Moonshot Base URL",
+      "description": "Moonshot/Kimi Anthropic-compatible base URL. Leave blank if you aren't using Moonshot.",
+      "default": "https://api.moonshot.cn/anthropic",
+      "required": false
+    },
+    "moonshot_api_key": {
+      "type": "string",
+      "title": "Moonshot API Key",
+      "description": "Optional. Sent only to Moonshot/Kimi.",
       "sensitive": true,
       "required": false
     },
     "advanced_env": {
       "type": "string",
       "title": "Optional Advanced Settings JSON",
-      "description": "Optional JSON object for less common provider keys and overrides, for example {\"GLM_API_KEY\":\"...\",\"XIAOMI_API_KEY\":\"...\",\"ANTHROPIC_API_KEY\":\"sk-ant-...\",\"OPENAI_API_KEY\":\"sk-...\",\"GEMINI_API_KEY\":\"...\",\"QWEN_API_KEY\":\"sk-...\"}.",
+      "description": "JSON object for less common provider keys and overrides — e.g. {\"GLM_API_KEY\":\"...\",\"XIAOMI_API_KEY\":\"...\",\"ANTHROPIC_API_KEY\":\"sk-ant-...\",\"OPENAI_API_KEY\":\"sk-...\",\"GEMINI_API_KEY\":\"...\",\"QWEN_API_KEY\":\"sk-...\",\"DEBUG_PROXY\":\"true\"}. Same keys as the env vars listed in README.",
       "default": "{}",
       "required": false
     }
