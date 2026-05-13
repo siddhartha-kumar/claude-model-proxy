@@ -11,12 +11,28 @@ import {
   DEFAULT_MODEL_ALIASES,
   DEFAULT_MODEL_MAP,
   DEFAULT_MODEL_ROUTES,
+  SERVER_NAME,
+  SERVER_VERSION,
   createProxyServer,
   loadConfig,
   resolveClaudeFamily,
   resolveModelForUpstream,
   stripClaudeDate,
 } from '../proxy.mjs';
+
+function headJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, { method: 'HEAD' }, (res) => {
+      resolve({
+        statusCode: res.statusCode,
+        headers: res.headers,
+      });
+      res.resume();
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 test('routes claude-deepseek-v4-flash to DeepSeek flash and rewrites responses back', async (t) => {
   let upstreamBody;
@@ -783,10 +799,17 @@ test('manifest exposes provider keys plus Claude family fallback overrides', () 
   const rootDir = path.resolve(testDir, '..');
   const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, 'manifest.json'), 'utf8'));
   const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+  const proxySource = fs.readFileSync(path.join(rootDir, 'proxy.mjs'), 'utf8');
   const serverSource = fs.readFileSync(path.join(rootDir, 'server/index.mjs'), 'utf8');
 
   assert.equal(manifest.version, packageJson.version);
-  assert.match(serverSource, new RegExp(`const SERVER_VERSION = '${manifest.version}'`));
+  // SERVER_VERSION lives in proxy.mjs and is re-exported by server/index.mjs.
+  assert.equal(SERVER_VERSION, manifest.version);
+  assert.match(
+    proxySource,
+    new RegExp(`export const SERVER_VERSION = '${manifest.version}'`),
+  );
+  assert.match(serverSource, /SERVER_VERSION,?\s*$|SERVER_VERSION,?\n/m);
   assert.deepEqual(Object.keys(manifest.user_config), [
     'base_url',
     'port',
@@ -1581,3 +1604,167 @@ async function readBody(stream) {
   }
   return Buffer.concat(chunks).toString('utf8');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /v1/models pagination — Anthropic-spec compliance
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('/v1/models honors ?limit and reports has_more correctly', async (t) => {
+  const proxy = createProxyServer(createTestConfig({}));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const port = proxy.address().port;
+
+  // ?limit=1 → exactly 1 model, has_more=true (we ship 84 default aliases).
+  const lim1 = await getJson(`http://127.0.0.1:${port}/v1/models?limit=1`);
+  assert.equal(lim1.statusCode, 200);
+  assert.equal(lim1.body.data.length, 1);
+  assert.equal(lim1.body.has_more, true);
+  assert.equal(lim1.body.first_id, lim1.body.data[0].id);
+  assert.equal(lim1.body.last_id, lim1.body.data[0].id);
+
+  // ?limit=1000 → all models, has_more=false.
+  const lim1000 = await getJson(`http://127.0.0.1:${port}/v1/models?limit=1000`);
+  assert.equal(lim1000.statusCode, 200);
+  assert.ok(lim1000.body.data.length >= 50, `expected >=50 models, got ${lim1000.body.data.length}`);
+  assert.equal(lim1000.body.has_more, false);
+  assert.equal(lim1000.body.first_id, lim1000.body.data[0].id);
+  assert.equal(lim1000.body.last_id, lim1000.body.data.at(-1).id);
+
+  // No ?limit → returns all (default is large).
+  const noLimit = await getJson(`http://127.0.0.1:${port}/v1/models`);
+  assert.equal(noLimit.body.data.length, lim1000.body.data.length);
+  assert.equal(noLimit.body.has_more, false);
+});
+
+test('/v1/models paginates correctly with ?after_id', async (t) => {
+  const proxy = createProxyServer(createTestConfig({}));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const port = proxy.address().port;
+  const full = await getJson(`http://127.0.0.1:${port}/v1/models?limit=1000`);
+  assert.ok(full.body.data.length > 3, 'need >3 models to test pagination');
+
+  // First page of 2.
+  const page1 = await getJson(`http://127.0.0.1:${port}/v1/models?limit=2`);
+  assert.equal(page1.body.data.length, 2);
+  assert.equal(page1.body.has_more, true);
+  assert.equal(page1.body.data[0].id, full.body.data[0].id);
+  assert.equal(page1.body.data[1].id, full.body.data[1].id);
+
+  // Second page of 2, anchored after the last id of page1.
+  const page2 = await getJson(
+    `http://127.0.0.1:${port}/v1/models?limit=2&after_id=${encodeURIComponent(page1.body.last_id)}`,
+  );
+  assert.equal(page2.body.data.length, 2);
+  assert.equal(page2.body.data[0].id, full.body.data[2].id);
+  assert.equal(page2.body.data[1].id, full.body.data[3].id);
+
+  // Final page — pick a near-end cursor that leaves fewer than `limit` entries.
+  const last = full.body.data.at(-1).id;
+  const lastButTwo = full.body.data.at(-3).id;
+  const tail = await getJson(
+    `http://127.0.0.1:${port}/v1/models?limit=10&after_id=${encodeURIComponent(lastButTwo)}`,
+  );
+  assert.equal(tail.body.data.length, 2);
+  assert.equal(tail.body.has_more, false);
+  assert.equal(tail.body.data.at(-1).id, last);
+});
+
+test('/v1/models paginates correctly with ?before_id', async (t) => {
+  const proxy = createProxyServer(createTestConfig({}));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const port = proxy.address().port;
+  const full = await getJson(`http://127.0.0.1:${port}/v1/models?limit=1000`);
+
+  // Pick a cursor four entries from the start so we have room before it.
+  const cursor = full.body.data[4].id;
+  const page = await getJson(
+    `http://127.0.0.1:${port}/v1/models?limit=3&before_id=${encodeURIComponent(cursor)}`,
+  );
+  assert.equal(page.body.data.length, 3);
+  // Should be the 3 entries immediately before the cursor (indices 1, 2, 3).
+  assert.equal(page.body.data[0].id, full.body.data[1].id);
+  assert.equal(page.body.data[2].id, full.body.data[3].id);
+  assert.equal(page.body.has_more, true); // index 0 still ahead of this page
+});
+
+test('/v1/models clamps absurd limits to 1000', async (t) => {
+  const proxy = createProxyServer(createTestConfig({}));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const port = proxy.address().port;
+  const response = await getJson(`http://127.0.0.1:${port}/v1/models?limit=999999`);
+  assert.equal(response.statusCode, 200);
+  // Whatever the catalog size, the request shouldn't error.
+  assert.ok(Array.isArray(response.body.data));
+});
+
+test('/v1/models 404 for unknown id returns Anthropic-shape error', async (t) => {
+  const proxy = createProxyServer(createTestConfig({}));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const port = proxy.address().port;
+  const response = await getJson(`http://127.0.0.1:${port}/v1/models/claude-does-not-exist`);
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.body.type, 'error');
+  assert.equal(response.body.error.type, 'not_found_error');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Root connectivity probe — answered locally instead of forwarded upstream
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('GET / returns a local 200 JSON probe response (no upstream forward)', async (t) => {
+  let upstreamHit = false;
+  const upstream = http.createServer((_req, res) => {
+    upstreamHit = true;
+    res.writeHead(405);
+    res.end();
+  });
+  await listen(upstream);
+  t.after(() => close(upstream));
+
+  const proxy = createProxyServer(createTestConfig({
+    ollamaBaseUrl: `http://127.0.0.1:${upstream.address().port}/v1`,
+  }));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await getJson(`http://127.0.0.1:${proxy.address().port}/`);
+  assert.equal(upstreamHit, false, 'root probe must not be forwarded upstream');
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.service, SERVER_NAME);
+  assert.equal(response.body.ok, true);
+  assert.equal(response.body.version, SERVER_VERSION);
+  assert.ok(Array.isArray(response.body.endpoints));
+  assert.ok(response.body.endpoints.includes('/v1/models'));
+});
+
+test('HEAD / returns 200 with content-type but no body', async (t) => {
+  let upstreamHit = false;
+  const upstream = http.createServer((_req, res) => {
+    upstreamHit = true;
+    res.writeHead(405);
+    res.end();
+  });
+  await listen(upstream);
+  t.after(() => close(upstream));
+
+  const proxy = createProxyServer(createTestConfig({
+    ollamaBaseUrl: `http://127.0.0.1:${upstream.address().port}/v1`,
+  }));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await headJson(`http://127.0.0.1:${proxy.address().port}/`);
+  assert.equal(upstreamHit, false, 'HEAD probe must not be forwarded upstream');
+  assert.equal(response.statusCode, 200);
+  assert.match(response.headers['content-type'] || '', /application\/json/);
+});

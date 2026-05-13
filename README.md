@@ -8,7 +8,7 @@ model names onto the upstream of your choice.**
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-43853d?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 [![Signed commits](https://img.shields.io/badge/commits-signed%20(SSH)-success?logo=git)](#security)
-[![Tests](https://img.shields.io/badge/tests-48%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-55%20passing-brightgreen)](#testing)
 [![MCPB](https://img.shields.io/badge/Claude%20Desktop-MCPB%20extension-7c3aed)](#claude-desktop-extension)
 
 </div>
@@ -141,7 +141,7 @@ npm install
 npm run build:mcpb
 ```
 
-Output: `dist/claude-model-proxy-0.3.0.mcpb`.
+Output: `dist/claude-model-proxy-0.3.1.mcpb`.
 
 1. **Enable Developer Mode** in Claude Desktop (Settings → General, or Help
    menu — varies by build; restart the app afterwards).
@@ -424,13 +424,14 @@ and `claude-anthropic-*` pair.
 
 The proxy implements the Anthropic Messages REST surface:
 
-| Method | Path | Handled |
-| --- | --- | --- |
-| `GET` | `/healthz` | local | proxy state, provider key flags, fallback table |
-| `GET` | `/v1/models` | local | Anthropic-compatible catalog (84 default aliases) |
-| `GET` | `/v1/models/{id}` | local | single-model lookup |
-| `POST` | `/v1/messages` | forwarded | resolved per request body's `model` |
-| `POST` | `/v1/messages/count_tokens` | local | deterministic character heuristic, returns `{"input_tokens": <n>}` |
+| Method | Path | Handled | Notes |
+| --- | --- | --- | --- |
+| `GET` / `HEAD` | `/` | local | Service identity probe — returns `{service, version, ok, endpoints, baseUrl, modelCount}`. Used by Claude Desktop / Bun-based agent SDKs for connectivity checks. |
+| `GET` | `/healthz` | local | Full proxy state, provider key flags, fallback table. |
+| `GET` | `/v1/models` | local | Anthropic-compatible paginated catalog (84 default aliases). Honors `limit` (1-1000, default 1000), `after_id`, `before_id`, reports `has_more`. |
+| `GET` | `/v1/models/{id}` | local | Single-model lookup; 404 returns the `{type:"error", error:{type:"not_found_error", ...}}` envelope. |
+| `POST` | `/v1/messages` | forwarded | Resolved per request body's `model`. |
+| `POST` | `/v1/messages/count_tokens` | local | Deterministic character heuristic, returns `{"input_tokens": <n>}`. |
 
 ## Claude Code CLI Integration
 
@@ -481,7 +482,7 @@ npm run launch-agent:uninstall
 npm test
 ```
 
-The suite is **48 Node `node:test` cases**, run against ephemeral
+The suite is **55 Node `node:test` cases**, run against ephemeral
 HTTP servers so no upstream credentials are required. Coverage includes:
 
 - Per-provider routing for all 10 providers.
@@ -491,6 +492,10 @@ HTTP servers so no upstream credentials are required. Coverage includes:
   Anthropic-key-aware fallback gating).
 - Local `count_tokens` heuristic.
 - `/v1/v1/...` path-duplication guard for `/v1`-suffixed base URLs.
+- `/v1/models` pagination — `limit`, `after_id`, `before_id`, accurate
+  `has_more`, and 404 error envelope shape.
+- `GET /` and `HEAD /` connectivity probe answered locally (not forwarded
+  upstream).
 - `REWRITE_RESPONSES` default and explicit opt-in / opt-out.
 - Manifest ↔ code parity (versions, env-var keys, static MCPB tool definitions).
 
@@ -524,6 +529,21 @@ request (see `.github/workflows/ci.yml`).
 To report a security issue privately, see [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
+
+### Not all models appear in Claude Desktop's gateway dropdown
+
+Fixed in v0.3.1. The previous `/v1/models` handler ignored the `limit` query
+parameter and always returned the full catalog with `has_more: false`. Strict
+clients that probe with `?limit=1` (Claude Desktop ≥ 1.7) read this as
+"there's only one model available" and stop discovering. Upgrade to v0.3.1
+(MCPB) or pull the latest `dev` for the standalone proxy. Verify with:
+
+```sh
+curl 'http://127.0.0.1:8787/v1/models?limit=1' | jq '.data | length, .has_more'
+# expect: 1, true
+curl 'http://127.0.0.1:8787/v1/models?limit=1000' | jq '.data | length, .has_more'
+# expect: 84, false
+```
 
 ### Model selection dropdown is empty in Claude Desktop
 
@@ -607,7 +627,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ```
 .
-├── manifest.json              # MCPB extension manifest (v0.3.0)
+├── manifest.json              # MCPB extension manifest (v0.3.1)
 ├── proxy.mjs                  # HTTP gateway proxy and provider adapters
 ├── server/index.mjs           # MCP stdio server hosting the proxy
 ├── scripts/                   # Build, LaunchAgent, and Node helper scripts
@@ -617,7 +637,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 │   ├── run-launch-agent.sh
 │   └── uninstall-launch-agent.mjs
 ├── srcs/                      # README screenshots and images
-├── test/proxy.test.mjs        # Node test suite (48 cases)
+├── test/proxy.test.mjs        # Node test suite (55 cases)
 ├── start.sh                   # Standalone POSIX launcher with PID file
 ├── .env.example               # Annotated configuration template
 ├── .github/workflows/ci.yml   # CI: lint, test, build

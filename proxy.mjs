@@ -10,6 +10,13 @@ import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Service identity — kept in lockstep with package.json / manifest.json /
+// server/index.mjs by the manifest test.
+// ─────────────────────────────────────────────────────────────────────────────
+export const SERVER_NAME = 'claude-model-proxy';
+export const SERVER_VERSION = '0.3.1';
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Debug logging — gated by DEBUG_PROXY=true (default off)
 // ─────────────────────────────────────────────────────────────────────────────
 const DEBUG = String(process.env.DEBUG_PROXY || '').toLowerCase() === 'true';
@@ -634,13 +641,25 @@ export function createProxyServer(config = loadConfig()) {
         return;
       }
 
-      // 2. Local /v1/models discovery (Anthropic-compatible shape).
+      // 2. Local root probe — Claude Desktop and other clients hit GET / or
+      //    HEAD / for connectivity. Answer locally to avoid forwarding the
+      //    probe to a random upstream that may 405.
+      if (
+        (clientReq.method === 'GET' || clientReq.method === 'HEAD')
+        && isRootRequest(clientReq.url)
+      ) {
+        handleRootRequest(clientReq, clientRes, normalizedConfig);
+        return;
+      }
+
+      // 3. Local /v1/models discovery (Anthropic-compatible shape with
+      //    full pagination: limit, after_id, before_id, has_more).
       if (clientReq.method === 'GET' && isModelsRequest(clientReq.url)) {
         handleModelsRequest(clientReq, clientRes, normalizedConfig);
         return;
       }
 
-      // 3. /v1/messages/count_tokens — answered locally with a character heuristic.
+      // 4. /v1/messages/count_tokens — answered locally with a character heuristic.
       //    OpenAI-compatible upstreams (Ollama, OpenAI, etc.) don't expose this
       //    endpoint, and the Anthropic upstream's response would be wrong because
       //    the upstream model is different from the alias the client asked about.
@@ -688,6 +707,11 @@ export function createProxyServer(config = loadConfig()) {
 // Local endpoints
 // ─────────────────────────────────────────────────────────────────────────────
 
+function isRootRequest(rawUrl = '/') {
+  const pathname = new URL(rawUrl, 'http://127.0.0.1').pathname;
+  return pathname === '/' || pathname === '';
+}
+
 function isModelsRequest(rawUrl = '/') {
   const pathname = new URL(rawUrl, 'http://127.0.0.1').pathname;
   return pathname === '/v1/models' || pathname.startsWith('/v1/models/');
@@ -699,30 +723,113 @@ function isCountTokensRequest(rawUrl = '/') {
     || pathname.endsWith('/v1/messages/count_tokens');
 }
 
+function handleRootRequest(req, res, config) {
+  const payload = {
+    service: 'claude-model-proxy',
+    version: SERVER_VERSION,
+    ok: true,
+    endpoints: ['/healthz', '/v1/models', '/v1/models/{id}', '/v1/messages', '/v1/messages/count_tokens'],
+    baseUrl: config.baseUrl,
+    modelCount: Object.keys(config.modelMap).length,
+  };
+
+  if (req.method === 'HEAD') {
+    const body = Buffer.from(JSON.stringify(payload));
+    res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-length': String(body.length),
+    });
+    res.end();
+    return;
+  }
+
+  sendJson(res, 200, payload);
+}
+
+// Anthropic Messages models endpoint — paginated.
+//   limit       1..1000      (we default to 1000 so a naive client gets everything)
+//   after_id    cursor       returns models strictly after the given id
+//   before_id   cursor       returns models strictly before the given id
+// Response shape matches https://docs.anthropic.com/en/api/models-list.
+const MODELS_LIMIT_DEFAULT = 1000;
+const MODELS_LIMIT_MAX = 1000;
+
 function handleModelsRequest(req, res, config) {
-  const pathname = new URL(req.url || '/', 'http://127.0.0.1').pathname;
-  const models = listConfiguredModels(config);
+  const url = new URL(req.url || '/', 'http://127.0.0.1');
+  const pathname = url.pathname;
+  const allModels = listConfiguredModels(config);
 
   if (pathname === '/v1/models') {
-    sendJson(res, 200, {
-      data: models,
-      first_id: models[0]?.id || null,
-      has_more: false,
-      last_id: models.at(-1)?.id || null,
-    });
+    sendJson(res, 200, paginateModels(allModels, url.searchParams));
     return;
   }
 
   const modelId = decodeURIComponent(pathname.slice('/v1/models/'.length));
-  const model = models.find((item) => item.id === modelId);
+  const model = allModels.find((item) => item.id === modelId);
   if (!model) {
     sendJson(res, 404, {
-      error: `Unknown model: ${modelId}`,
+      type: 'error',
+      error: { type: 'not_found_error', message: `Unknown model: ${modelId}` },
     });
     return;
   }
 
   sendJson(res, 200, model);
+}
+
+function paginateModels(allModels, searchParams) {
+  const total = allModels.length;
+  const limit = parsePositiveInt(
+    searchParams.get('limit'),
+    MODELS_LIMIT_DEFAULT,
+    MODELS_LIMIT_MAX,
+  );
+  const afterId = searchParams.get('after_id');
+  const beforeId = searchParams.get('before_id');
+
+  // Default window is the whole list, in catalog (id-sorted) order.
+  let lo = 0;
+  let hi = total;
+
+  if (afterId) {
+    const i = allModels.findIndex((m) => m.id === afterId);
+    if (i >= 0) lo = i + 1;
+  }
+
+  if (beforeId) {
+    const i = allModels.findIndex((m) => m.id === beforeId);
+    if (i >= 0) {
+      // before_id paginates backward: return up to `limit` items ending right
+      // before the cursor. Compute lo from hi.
+      hi = i;
+      lo = Math.max(0, hi - limit);
+      const page = allModels.slice(lo, hi);
+      return {
+        data: page,
+        first_id: page[0]?.id ?? null,
+        has_more: lo > 0,
+        last_id: page.at(-1)?.id ?? null,
+      };
+    }
+  }
+
+  const pageEnd = Math.min(hi, lo + limit);
+  const page = allModels.slice(lo, pageEnd);
+
+  return {
+    data: page,
+    first_id: page[0]?.id ?? null,
+    has_more: pageEnd < hi,
+    last_id: page.at(-1)?.id ?? null,
+  };
+}
+
+function parsePositiveInt(raw, fallback, max) {
+  if (raw === null || raw === undefined || raw === '') return fallback;
+  const parsed = Number.parseInt(String(raw), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  if (typeof max === 'number' && parsed > max) return max;
+  return parsed;
 }
 
 const MODELS_CREATED_AT = '2026-01-01T00:00:00Z';

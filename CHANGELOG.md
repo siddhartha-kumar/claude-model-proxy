@@ -5,6 +5,43 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-05-14
+
+### Fixed
+
+- **Anthropic-spec pagination on `/v1/models`.** Earlier releases ignored the
+  `limit`, `after_id`, and `before_id` query parameters and always returned
+  the full 84-entry catalog with `has_more: false`. Strict clients such as
+  Claude Desktop probe with `?limit=1` first to decide whether to paginate,
+  and could end up displaying only a subset of the catalog. The endpoint
+  now honors `limit` (1–1000, default 1000), `after_id` (forward cursor),
+  `before_id` (backward cursor), and reports `has_more` accurately.
+- **`GET /` and `HEAD /` are now answered locally.** Previously they were
+  forwarded to the default provider's base URL, which returned a confusing
+  `405 Method Not Allowed`. The proxy now returns a small JSON status
+  document with the service name, version, and known endpoints. Standalone
+  agent SDKs (Bun-based clients) probing the gateway root see a clean 200.
+- **`/v1/models/{id}` 404 response shape** now matches Anthropic's
+  `{ "type": "error", "error": { "type": "not_found_error", "message": "..." } }`
+  envelope.
+
+### Changed
+
+- `SERVER_NAME` and `SERVER_VERSION` are exported from `proxy.mjs` and
+  re-exported by `server/index.mjs`. The manifest parity test now reads them
+  from the canonical location.
+
+### Tests
+
+- Suite expanded from 48 to **55** cases. New coverage:
+  - `?limit=1` returns exactly one model with `has_more=true`.
+  - `?limit=1000` returns the full catalog with `has_more=false`.
+  - Default `limit` returns the full catalog.
+  - Absurd `?limit=999999` is clamped to 1000 without error.
+  - `?after_id` and `?before_id` cursor pagination through the catalog.
+  - `/v1/models/{unknown-id}` returns the Anthropic-shaped error envelope.
+  - `GET /` and `HEAD /` are answered locally and never forwarded upstream.
+
 ## [0.3.0] — 2026-05-13
 
 ### Added
