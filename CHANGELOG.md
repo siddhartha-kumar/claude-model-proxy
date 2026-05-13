@@ -5,6 +5,58 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-14
+
+### Added
+
+- **16 tier-prefixed Claude aliases** for Claude Desktop's Cowork 3P picker.
+  The Cowork model selector surfaces only models whose id matches
+  `claude-(haiku|sonnet|opus)-*`. Tier aliases route to the same Ollama
+  Cloud and HuggingFace Router upstreams as the longer `claude-ollama-*` /
+  `claude-hf-*` aliases, so Cowork users get a tier-organised picker
+  without losing the explicit-provider aliases:
+
+  | Tier | Alias | Upstream |
+  | --- | --- | --- |
+  | Haiku | `claude-haiku-fast` | `qwen3-coder-next:cloud` (Ollama) |
+  | Haiku | `claude-haiku-llama-8b` | `meta-llama/Llama-3.1-8B-Instruct` (HF) |
+  | Haiku | `claude-haiku-gpt-oss-20b` | `gpt-oss:20b-cloud` (Ollama) |
+  | Haiku | `claude-haiku-phi-4` | `microsoft/phi-4` (HF) |
+  | Haiku | `claude-haiku-glm` | `glm-4.7:cloud` (Ollama) |
+  | Sonnet | `claude-sonnet-coder` | `qwen3-coder:480b-cloud` (Ollama) |
+  | Sonnet | `claude-sonnet-llama-70b` | `meta-llama/Llama-3.3-70B-Instruct` (HF) |
+  | Sonnet | `claude-sonnet-deepseek-r1` | `deepseek-ai/DeepSeek-R1` (HF) |
+  | Sonnet | `claude-sonnet-glm` | `glm-5.1:cloud` (Ollama) |
+  | Sonnet | `claude-sonnet-kimi` | `kimi-k2.6:cloud` (Ollama) |
+  | Sonnet | `claude-sonnet-mistral` | `mistralai/Mistral-Large-Instruct-2411` (HF) |
+  | Opus | `claude-opus-gpt-oss-120b` | `gpt-oss:120b-cloud` (Ollama) |
+  | Opus | `claude-opus-kimi-1t` | `kimi-k2:1t-cloud` (Ollama) |
+  | Opus | `claude-opus-deepseek-pro` | `deepseek-v4-pro:cloud` (Ollama) |
+  | Opus | `claude-opus-llama-405b` | `meta-llama/Llama-3.1-405B-Instruct` (HF) |
+  | Opus | `claude-opus-qwen-coder-480b` | `Qwen/Qwen3-Coder-480B-A35B-Instruct` (HF) |
+
+  `/v1/models` now lists 100 default aliases (up from 84).
+
+### Behaviour
+
+- The new aliases route directly to their target provider in
+  `DEFAULT_MODEL_ROUTES` (`ollama` or `huggingface`, never `anthropic`).
+  This means `resolveModelForUpstream` short-circuits on the exact match
+  and the Claude family fallback never engages for tier-prefixed aliases —
+  the user gets the actual model they picked, not the configured Haiku /
+  Sonnet / Opus fallback.
+
+### Tests
+
+- Suite expanded from 55 to **58** cases. New coverage:
+  - All 16 tier aliases exist with the documented upstream id and route.
+  - `resolveModelForUpstream` returns the exact upstream for each tier
+    alias even when `ANTHROPIC_API_KEY` is empty (regression guard for
+    family-fallback interception).
+  - Dated tier aliases (e.g. `claude-sonnet-coder-20260514`) resolve via
+    the date-stripping path.
+  - `/v1/models` (the Cowork picker source) exposes all 16 new aliases.
+
 ## [0.3.1] — 2026-05-14
 
 ### Fixed

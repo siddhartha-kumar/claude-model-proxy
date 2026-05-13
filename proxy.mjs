@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 // server/index.mjs by the manifest test.
 // ─────────────────────────────────────────────────────────────────────────────
 export const SERVER_NAME = 'claude-model-proxy';
-export const SERVER_VERSION = '0.3.1';
+export const SERVER_VERSION = '0.4.0';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Debug logging — gated by DEBUG_PROXY=true (default off)
@@ -106,6 +106,35 @@ export const DEFAULT_MODEL_MAP = Object.freeze({
   'claude-dsv4-flash': 'deepseek-v4-flash:cloud',
   'claude-dsv4-pro': 'deepseek-v4-pro:cloud',
   'claude-glm51': 'glm-5.1:cloud',
+  // ───────────────────────────────────────────────────────────────────────
+  // Tier-prefixed aliases. Claude Desktop's Cowork 3P model picker only
+  // surfaces models whose id matches `claude-(haiku|sonnet|opus)-*`. These
+  // entries route to the same Ollama Cloud / HuggingFace upstreams as the
+  // longer claude-ollama-* / claude-hf-* aliases above, giving Cowork users
+  // a tier-organised picker without losing the explicit-provider aliases.
+  // Routes are explicitly 'ollama' / 'huggingface' so the Claude family
+  // fallback (which only kicks in for non-mapped Anthropic-routed models)
+  // never engages for these.
+  // ───────────────────────────────────────────────────────────────────────
+  // Haiku tier — fast and small (≤30B params or specialised small).
+  'claude-haiku-fast': 'qwen3-coder-next:cloud',
+  'claude-haiku-llama-8b': 'meta-llama/Llama-3.1-8B-Instruct',
+  'claude-haiku-gpt-oss-20b': 'gpt-oss:20b-cloud',
+  'claude-haiku-phi-4': 'microsoft/phi-4',
+  'claude-haiku-glm': 'glm-4.7:cloud',
+  // Sonnet tier — balanced mid-range (30B-200B equivalent).
+  'claude-sonnet-coder': 'qwen3-coder:480b-cloud',
+  'claude-sonnet-llama-70b': 'meta-llama/Llama-3.3-70B-Instruct',
+  'claude-sonnet-deepseek-r1': 'deepseek-ai/DeepSeek-R1',
+  'claude-sonnet-glm': 'glm-5.1:cloud',
+  'claude-sonnet-kimi': 'kimi-k2.6:cloud',
+  'claude-sonnet-mistral': 'mistralai/Mistral-Large-Instruct-2411',
+  // Opus tier — largest and most capable (>200B equivalent).
+  'claude-opus-gpt-oss-120b': 'gpt-oss:120b-cloud',
+  'claude-opus-kimi-1t': 'kimi-k2:1t-cloud',
+  'claude-opus-deepseek-pro': 'deepseek-v4-pro:cloud',
+  'claude-opus-llama-405b': 'meta-llama/Llama-3.1-405B-Instruct',
+  'claude-opus-qwen-coder-480b': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
   // HuggingFace Inference Router (OpenAI-compatible). The proxy talks to
   //   https://router.huggingface.co/v1/chat/completions
   // and HF Router routes to whichever underlying provider has the model
@@ -286,6 +315,26 @@ export const DEFAULT_MODEL_ROUTES = Object.freeze({
   'claude-dsv4-flash': 'ollama',
   'claude-dsv4-pro': 'ollama',
   'claude-glm51': 'ollama',
+  // Tier-prefixed aliases. Routes are explicit per-alias so resolveModelForUpstream
+  // does NOT engage the Anthropic family fallback for these entries (the
+  // fallback only fires when modelRoutes[alias] === 'anthropic' AND
+  // ANTHROPIC_API_KEY is empty).
+  'claude-haiku-fast': 'ollama',
+  'claude-haiku-llama-8b': 'huggingface',
+  'claude-haiku-gpt-oss-20b': 'ollama',
+  'claude-haiku-phi-4': 'huggingface',
+  'claude-haiku-glm': 'ollama',
+  'claude-sonnet-coder': 'ollama',
+  'claude-sonnet-llama-70b': 'huggingface',
+  'claude-sonnet-deepseek-r1': 'huggingface',
+  'claude-sonnet-glm': 'ollama',
+  'claude-sonnet-kimi': 'ollama',
+  'claude-sonnet-mistral': 'huggingface',
+  'claude-opus-gpt-oss-120b': 'ollama',
+  'claude-opus-kimi-1t': 'ollama',
+  'claude-opus-deepseek-pro': 'ollama',
+  'claude-opus-llama-405b': 'huggingface',
+  'claude-opus-qwen-coder-480b': 'huggingface',
   'claude-hf-llama-3.3-70b': 'huggingface',
   'claude-hf-llama-3.1-405b': 'huggingface',
   'claude-hf-llama-3.1-70b': 'huggingface',

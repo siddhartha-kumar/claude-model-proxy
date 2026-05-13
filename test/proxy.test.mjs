@@ -1747,6 +1747,107 @@ test('GET / returns a local 200 JSON probe response (no upstream forward)', asyn
   assert.ok(response.body.endpoints.includes('/v1/models'));
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tier-prefixed aliases for Claude Desktop Cowork picker
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('tier-prefixed claude-haiku-/sonnet-/opus- aliases all exist with non-Anthropic routes', () => {
+  const config = loadConfig({});
+
+  const tierAliases = {
+    haiku: [
+      ['claude-haiku-fast', 'qwen3-coder-next:cloud', 'ollama'],
+      ['claude-haiku-llama-8b', 'meta-llama/Llama-3.1-8B-Instruct', 'huggingface'],
+      ['claude-haiku-gpt-oss-20b', 'gpt-oss:20b-cloud', 'ollama'],
+      ['claude-haiku-phi-4', 'microsoft/phi-4', 'huggingface'],
+      ['claude-haiku-glm', 'glm-4.7:cloud', 'ollama'],
+    ],
+    sonnet: [
+      ['claude-sonnet-coder', 'qwen3-coder:480b-cloud', 'ollama'],
+      ['claude-sonnet-llama-70b', 'meta-llama/Llama-3.3-70B-Instruct', 'huggingface'],
+      ['claude-sonnet-deepseek-r1', 'deepseek-ai/DeepSeek-R1', 'huggingface'],
+      ['claude-sonnet-glm', 'glm-5.1:cloud', 'ollama'],
+      ['claude-sonnet-kimi', 'kimi-k2.6:cloud', 'ollama'],
+      ['claude-sonnet-mistral', 'mistralai/Mistral-Large-Instruct-2411', 'huggingface'],
+    ],
+    opus: [
+      ['claude-opus-gpt-oss-120b', 'gpt-oss:120b-cloud', 'ollama'],
+      ['claude-opus-kimi-1t', 'kimi-k2:1t-cloud', 'ollama'],
+      ['claude-opus-deepseek-pro', 'deepseek-v4-pro:cloud', 'ollama'],
+      ['claude-opus-llama-405b', 'meta-llama/Llama-3.1-405B-Instruct', 'huggingface'],
+      ['claude-opus-qwen-coder-480b', 'Qwen/Qwen3-Coder-480B-A35B-Instruct', 'huggingface'],
+    ],
+  };
+
+  for (const [tier, entries] of Object.entries(tierAliases)) {
+    for (const [alias, upstream, expectedProvider] of entries) {
+      assert.equal(
+        config.modelMap[alias],
+        upstream,
+        `MODEL_MAP[${alias}] should be ${upstream}`,
+      );
+      assert.equal(
+        config.modelRoutes[alias],
+        expectedProvider,
+        `MODEL_ROUTES[${alias}] should be ${expectedProvider} (must NOT be 'anthropic' so family fallback doesn't intercept)`,
+      );
+      assert.equal(
+        resolveClaudeFamily(alias),
+        tier,
+        `resolveClaudeFamily(${alias}) should detect ${tier}`,
+      );
+    }
+  }
+});
+
+test('tier-prefixed aliases resolve directly without engaging the Claude family fallback', () => {
+  // No ANTHROPIC_API_KEY — family fallback would normally engage for unmapped
+  // claude-haiku-*/sonnet-*/opus-* models. The tier aliases must short-circuit
+  // because their route is explicitly non-Anthropic.
+  const config = loadConfig({ OLLAMA_API_KEY: 'k', HUGGINGFACE_API_KEY: 'k' });
+
+  const haiku = resolveModelForUpstream('claude-haiku-fast', config);
+  assert.equal(haiku.upstreamModel, 'qwen3-coder-next:cloud');
+  assert.equal(haiku.requestAlias, 'claude-haiku-fast');
+
+  const sonnet = resolveModelForUpstream('claude-sonnet-deepseek-r1', config);
+  assert.equal(sonnet.upstreamModel, 'deepseek-ai/DeepSeek-R1');
+  assert.equal(sonnet.requestAlias, 'claude-sonnet-deepseek-r1');
+
+  const opus = resolveModelForUpstream('claude-opus-llama-405b', config);
+  assert.equal(opus.upstreamModel, 'meta-llama/Llama-3.1-405B-Instruct');
+  assert.equal(opus.requestAlias, 'claude-opus-llama-405b');
+
+  // Dated tier-prefixed alias (Claude Desktop may add a date suffix internally).
+  const datedSonnet = resolveModelForUpstream('claude-sonnet-coder-20260514', config);
+  assert.equal(datedSonnet.upstreamModel, 'qwen3-coder:480b-cloud');
+  assert.equal(datedSonnet.requestAlias, 'claude-sonnet-coder');
+});
+
+test('/v1/models exposes tier-prefixed aliases (Cowork picker source)', async (t) => {
+  const proxy = createProxyServer(createTestConfig({}));
+  await listen(proxy);
+  t.after(() => close(proxy));
+
+  const response = await getJson(`http://127.0.0.1:${proxy.address().port}/v1/models?limit=1000`);
+  assert.equal(response.statusCode, 200);
+
+  const ids = new Set(response.body.data.map((m) => m.id));
+  for (const required of [
+    // 5 haiku
+    'claude-haiku-fast', 'claude-haiku-llama-8b', 'claude-haiku-gpt-oss-20b',
+    'claude-haiku-phi-4', 'claude-haiku-glm',
+    // 6 sonnet
+    'claude-sonnet-coder', 'claude-sonnet-llama-70b', 'claude-sonnet-deepseek-r1',
+    'claude-sonnet-glm', 'claude-sonnet-kimi', 'claude-sonnet-mistral',
+    // 5 opus
+    'claude-opus-gpt-oss-120b', 'claude-opus-kimi-1t', 'claude-opus-deepseek-pro',
+    'claude-opus-llama-405b', 'claude-opus-qwen-coder-480b',
+  ]) {
+    assert.ok(ids.has(required), `expected ${required} in /v1/models`);
+  }
+});
+
 test('HEAD / returns 200 with content-type but no body', async (t) => {
   let upstreamHit = false;
   const upstream = http.createServer((_req, res) => {

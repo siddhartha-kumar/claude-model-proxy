@@ -8,7 +8,7 @@ model names onto the upstream of your choice.**
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-43853d?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 [![Signed commits](https://img.shields.io/badge/commits-signed%20(SSH)-success?logo=git)](#security)
-[![Tests](https://img.shields.io/badge/tests-55%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-58%20passing-brightgreen)](#testing)
 [![MCPB](https://img.shields.io/badge/Claude%20Desktop-MCPB%20extension-7c3aed)](#claude-desktop-extension)
 
 </div>
@@ -141,7 +141,7 @@ npm install
 npm run build:mcpb
 ```
 
-Output: `dist/claude-model-proxy-0.3.1.mcpb`.
+Output: `dist/claude-model-proxy-0.4.0.mcpb`.
 
 1. **Enable Developer Mode** in Claude Desktop (Settings → General, or Help
    menu — varies by build; restart the app afterwards).
@@ -174,7 +174,7 @@ Output: `dist/claude-model-proxy-0.3.1.mcpb`.
    | Gateway base URL | `http://127.0.0.1:8787` |
    | Gateway API key | any non-empty placeholder (e.g. `dummy-claude-model-proxy`) |
    | Gateway auth scheme | `bearer` |
-   | Model list | *Fetch from gateway* — auto-populates 84 aliases |
+   | Model list | *Fetch from gateway* — auto-populates 100 aliases |
 
 5. **Open a new chat** and pick any `claude-ollama-*` or `claude-hf-*` model.
    Anything Claude Desktop sends in the background (title generation,
@@ -428,10 +428,55 @@ The proxy implements the Anthropic Messages REST surface:
 | --- | --- | --- | --- |
 | `GET` / `HEAD` | `/` | local | Service identity probe — returns `{service, version, ok, endpoints, baseUrl, modelCount}`. Used by Claude Desktop / Bun-based agent SDKs for connectivity checks. |
 | `GET` | `/healthz` | local | Full proxy state, provider key flags, fallback table. |
-| `GET` | `/v1/models` | local | Anthropic-compatible paginated catalog (84 default aliases). Honors `limit` (1-1000, default 1000), `after_id`, `before_id`, reports `has_more`. |
+| `GET` | `/v1/models` | local | Anthropic-compatible paginated catalog (100 default aliases). Honors `limit` (1-1000, default 1000), `after_id`, `before_id`, reports `has_more`. |
 | `GET` | `/v1/models/{id}` | local | Single-model lookup; 404 returns the `{type:"error", error:{type:"not_found_error", ...}}` envelope. |
 | `POST` | `/v1/messages` | forwarded | Resolved per request body's `model`. |
 | `POST` | `/v1/messages/count_tokens` | local | Deterministic character heuristic, returns `{"input_tokens": <n>}`. |
+
+## Claude Desktop Cowork 3P picker
+
+Claude Desktop's **Cowork 3P** mode (3rd-party gateway integration) shows a
+curated subset of the gateway catalog rather than every model from
+`/v1/models`. The picker filters to entries whose id matches the Claude tier
+pattern `claude-(haiku|sonnet|opus)-*`, plus the user's currently selected
+model and its short-alias siblings.
+
+To give Cowork users full access to the proxy's provider mix, v0.4.0 ships
+**16 tier-prefixed aliases** that route to Ollama Cloud and HuggingFace
+Router upstreams while matching Cowork's filter:
+
+| Tier | Alias | Routes to |
+| --- | --- | --- |
+| **Haiku** (fast) | `claude-haiku-fast` | Ollama · `qwen3-coder-next:cloud` |
+| **Haiku** | `claude-haiku-gpt-oss-20b` | Ollama · `gpt-oss:20b-cloud` |
+| **Haiku** | `claude-haiku-glm` | Ollama · `glm-4.7:cloud` |
+| **Haiku** | `claude-haiku-llama-8b` | HF · `meta-llama/Llama-3.1-8B-Instruct` |
+| **Haiku** | `claude-haiku-phi-4` | HF · `microsoft/phi-4` |
+| **Sonnet** (balanced) | `claude-sonnet-coder` | Ollama · `qwen3-coder:480b-cloud` |
+| **Sonnet** | `claude-sonnet-glm` | Ollama · `glm-5.1:cloud` |
+| **Sonnet** | `claude-sonnet-kimi` | Ollama · `kimi-k2.6:cloud` |
+| **Sonnet** | `claude-sonnet-llama-70b` | HF · `meta-llama/Llama-3.3-70B-Instruct` |
+| **Sonnet** | `claude-sonnet-deepseek-r1` | HF · `deepseek-ai/DeepSeek-R1` |
+| **Sonnet** | `claude-sonnet-mistral` | HF · `mistralai/Mistral-Large-Instruct-2411` |
+| **Opus** (largest) | `claude-opus-gpt-oss-120b` | Ollama · `gpt-oss:120b-cloud` |
+| **Opus** | `claude-opus-kimi-1t` | Ollama · `kimi-k2:1t-cloud` |
+| **Opus** | `claude-opus-deepseek-pro` | Ollama · `deepseek-v4-pro:cloud` |
+| **Opus** | `claude-opus-llama-405b` | HF · `meta-llama/Llama-3.1-405B-Instruct` |
+| **Opus** | `claude-opus-qwen-coder-480b` | HF · `Qwen/Qwen3-Coder-480B-A35B-Instruct` |
+
+After upgrading, open the Cowork picker (**⇧ Ctrl I** or click *Models*) — you
+should see these 16 entries grouped under their Haiku / Sonnet / Opus
+headings alongside the native Claude versions.
+
+The existing `claude-ollama-*` and `claude-hf-*` aliases are unchanged and
+remain available in regular Claude Desktop chat dropdowns and via the
+`--model` flag in Claude Code CLI.
+
+> **Why these aliases bypass the Haiku/Sonnet/Opus family fallback:**
+> the fallback only engages when a model's route is `anthropic` AND
+> `ANTHROPIC_API_KEY` is empty. Every tier-prefixed alias is explicitly routed
+> to `ollama` or `huggingface` in `DEFAULT_MODEL_ROUTES`, so the resolver
+> matches exactly on the alias — no surprise rerouting.
 
 ## Claude Code CLI Integration
 
@@ -482,7 +527,7 @@ npm run launch-agent:uninstall
 npm test
 ```
 
-The suite is **55 Node `node:test` cases**, run against ephemeral
+The suite is **58 Node `node:test` cases**, run against ephemeral
 HTTP servers so no upstream credentials are required. Coverage includes:
 
 - Per-provider routing for all 10 providers.
@@ -627,7 +672,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ```
 .
-├── manifest.json              # MCPB extension manifest (v0.3.1)
+├── manifest.json              # MCPB extension manifest (v0.4.0)
 ├── proxy.mjs                  # HTTP gateway proxy and provider adapters
 ├── server/index.mjs           # MCP stdio server hosting the proxy
 ├── scripts/                   # Build, LaunchAgent, and Node helper scripts
@@ -637,7 +682,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 │   ├── run-launch-agent.sh
 │   └── uninstall-launch-agent.mjs
 ├── srcs/                      # README screenshots and images
-├── test/proxy.test.mjs        # Node test suite (55 cases)
+├── test/proxy.test.mjs        # Node test suite (58 cases)
 ├── start.sh                   # Standalone POSIX launcher with PID file
 ├── .env.example               # Annotated configuration template
 ├── .github/workflows/ci.yml   # CI: lint, test, build
