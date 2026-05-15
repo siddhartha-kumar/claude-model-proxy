@@ -1609,100 +1609,26 @@ async function readBody(stream) {
 // /v1/models pagination — Anthropic-spec compliance
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('/v1/models honors ?limit and reports has_more correctly', async (t) => {
+test('/v1/models returns the full catalog regardless of ?limit (no pagination)', async (t) => {
+  // Empirically, partial /v1/models responses (with has_more=true on a
+  // ?limit=1 probe) break Claude Desktop's Gateway picker AND Claude Code's
+  // /model picker — see CHANGELOG v0.4.1 for the regression. The endpoint
+  // always returns the full catalog with has_more=false.
   const proxy = createProxyServer(createTestConfig({}));
   await listen(proxy);
   t.after(() => close(proxy));
 
   const port = proxy.address().port;
+  const expectedCount = Object.keys(DEFAULT_MODEL_MAP).length;
 
-  // ?limit=1 → exactly 1 model, has_more=true (we ship 84 default aliases).
-  const lim1 = await getJson(`http://127.0.0.1:${port}/v1/models?limit=1`);
-  assert.equal(lim1.statusCode, 200);
-  assert.equal(lim1.body.data.length, 1);
-  assert.equal(lim1.body.has_more, true);
-  assert.equal(lim1.body.first_id, lim1.body.data[0].id);
-  assert.equal(lim1.body.last_id, lim1.body.data[0].id);
-
-  // ?limit=1000 → all models, has_more=false.
-  const lim1000 = await getJson(`http://127.0.0.1:${port}/v1/models?limit=1000`);
-  assert.equal(lim1000.statusCode, 200);
-  assert.ok(lim1000.body.data.length >= 50, `expected >=50 models, got ${lim1000.body.data.length}`);
-  assert.equal(lim1000.body.has_more, false);
-  assert.equal(lim1000.body.first_id, lim1000.body.data[0].id);
-  assert.equal(lim1000.body.last_id, lim1000.body.data.at(-1).id);
-
-  // No ?limit → returns all (default is large).
-  const noLimit = await getJson(`http://127.0.0.1:${port}/v1/models`);
-  assert.equal(noLimit.body.data.length, lim1000.body.data.length);
-  assert.equal(noLimit.body.has_more, false);
-});
-
-test('/v1/models paginates correctly with ?after_id', async (t) => {
-  const proxy = createProxyServer(createTestConfig({}));
-  await listen(proxy);
-  t.after(() => close(proxy));
-
-  const port = proxy.address().port;
-  const full = await getJson(`http://127.0.0.1:${port}/v1/models?limit=1000`);
-  assert.ok(full.body.data.length > 3, 'need >3 models to test pagination');
-
-  // First page of 2.
-  const page1 = await getJson(`http://127.0.0.1:${port}/v1/models?limit=2`);
-  assert.equal(page1.body.data.length, 2);
-  assert.equal(page1.body.has_more, true);
-  assert.equal(page1.body.data[0].id, full.body.data[0].id);
-  assert.equal(page1.body.data[1].id, full.body.data[1].id);
-
-  // Second page of 2, anchored after the last id of page1.
-  const page2 = await getJson(
-    `http://127.0.0.1:${port}/v1/models?limit=2&after_id=${encodeURIComponent(page1.body.last_id)}`,
-  );
-  assert.equal(page2.body.data.length, 2);
-  assert.equal(page2.body.data[0].id, full.body.data[2].id);
-  assert.equal(page2.body.data[1].id, full.body.data[3].id);
-
-  // Final page — pick a near-end cursor that leaves fewer than `limit` entries.
-  const last = full.body.data.at(-1).id;
-  const lastButTwo = full.body.data.at(-3).id;
-  const tail = await getJson(
-    `http://127.0.0.1:${port}/v1/models?limit=10&after_id=${encodeURIComponent(lastButTwo)}`,
-  );
-  assert.equal(tail.body.data.length, 2);
-  assert.equal(tail.body.has_more, false);
-  assert.equal(tail.body.data.at(-1).id, last);
-});
-
-test('/v1/models paginates correctly with ?before_id', async (t) => {
-  const proxy = createProxyServer(createTestConfig({}));
-  await listen(proxy);
-  t.after(() => close(proxy));
-
-  const port = proxy.address().port;
-  const full = await getJson(`http://127.0.0.1:${port}/v1/models?limit=1000`);
-
-  // Pick a cursor four entries from the start so we have room before it.
-  const cursor = full.body.data[4].id;
-  const page = await getJson(
-    `http://127.0.0.1:${port}/v1/models?limit=3&before_id=${encodeURIComponent(cursor)}`,
-  );
-  assert.equal(page.body.data.length, 3);
-  // Should be the 3 entries immediately before the cursor (indices 1, 2, 3).
-  assert.equal(page.body.data[0].id, full.body.data[1].id);
-  assert.equal(page.body.data[2].id, full.body.data[3].id);
-  assert.equal(page.body.has_more, true); // index 0 still ahead of this page
-});
-
-test('/v1/models clamps absurd limits to 1000', async (t) => {
-  const proxy = createProxyServer(createTestConfig({}));
-  await listen(proxy);
-  t.after(() => close(proxy));
-
-  const port = proxy.address().port;
-  const response = await getJson(`http://127.0.0.1:${port}/v1/models?limit=999999`);
-  assert.equal(response.statusCode, 200);
-  // Whatever the catalog size, the request shouldn't error.
-  assert.ok(Array.isArray(response.body.data));
+  for (const query of ['', '?limit=1', '?limit=20', '?limit=1000', '?limit=999999']) {
+    const response = await getJson(`http://127.0.0.1:${port}/v1/models${query}`);
+    assert.equal(response.statusCode, 200, `failed for ${query || '(no query)'}`);
+    assert.equal(response.body.data.length, expectedCount, `wrong count for ${query || '(no query)'}`);
+    assert.equal(response.body.has_more, false, `wrong has_more for ${query || '(no query)'}`);
+    assert.equal(response.body.first_id, response.body.data[0].id);
+    assert.equal(response.body.last_id, response.body.data.at(-1).id);
+  }
 });
 
 test('/v1/models 404 for unknown id returns Anthropic-shape error', async (t) => {
@@ -1745,107 +1671,6 @@ test('GET / returns a local 200 JSON probe response (no upstream forward)', asyn
   assert.equal(response.body.version, SERVER_VERSION);
   assert.ok(Array.isArray(response.body.endpoints));
   assert.ok(response.body.endpoints.includes('/v1/models'));
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tier-prefixed aliases for Claude Desktop Cowork picker
-// ─────────────────────────────────────────────────────────────────────────────
-
-test('tier-prefixed claude-haiku-/sonnet-/opus- aliases all exist with non-Anthropic routes', () => {
-  const config = loadConfig({});
-
-  const tierAliases = {
-    haiku: [
-      ['claude-haiku-fast', 'qwen3-coder-next:cloud', 'ollama'],
-      ['claude-haiku-llama-8b', 'meta-llama/Llama-3.1-8B-Instruct', 'huggingface'],
-      ['claude-haiku-gpt-oss-20b', 'gpt-oss:20b-cloud', 'ollama'],
-      ['claude-haiku-phi-4', 'microsoft/phi-4', 'huggingface'],
-      ['claude-haiku-glm', 'glm-4.7:cloud', 'ollama'],
-    ],
-    sonnet: [
-      ['claude-sonnet-coder', 'qwen3-coder:480b-cloud', 'ollama'],
-      ['claude-sonnet-llama-70b', 'meta-llama/Llama-3.3-70B-Instruct', 'huggingface'],
-      ['claude-sonnet-deepseek-r1', 'deepseek-ai/DeepSeek-R1', 'huggingface'],
-      ['claude-sonnet-glm', 'glm-5.1:cloud', 'ollama'],
-      ['claude-sonnet-kimi', 'kimi-k2.6:cloud', 'ollama'],
-      ['claude-sonnet-mistral', 'mistralai/Mistral-Large-Instruct-2411', 'huggingface'],
-    ],
-    opus: [
-      ['claude-opus-gpt-oss-120b', 'gpt-oss:120b-cloud', 'ollama'],
-      ['claude-opus-kimi-1t', 'kimi-k2:1t-cloud', 'ollama'],
-      ['claude-opus-deepseek-pro', 'deepseek-v4-pro:cloud', 'ollama'],
-      ['claude-opus-llama-405b', 'meta-llama/Llama-3.1-405B-Instruct', 'huggingface'],
-      ['claude-opus-qwen-coder-480b', 'Qwen/Qwen3-Coder-480B-A35B-Instruct', 'huggingface'],
-    ],
-  };
-
-  for (const [tier, entries] of Object.entries(tierAliases)) {
-    for (const [alias, upstream, expectedProvider] of entries) {
-      assert.equal(
-        config.modelMap[alias],
-        upstream,
-        `MODEL_MAP[${alias}] should be ${upstream}`,
-      );
-      assert.equal(
-        config.modelRoutes[alias],
-        expectedProvider,
-        `MODEL_ROUTES[${alias}] should be ${expectedProvider} (must NOT be 'anthropic' so family fallback doesn't intercept)`,
-      );
-      assert.equal(
-        resolveClaudeFamily(alias),
-        tier,
-        `resolveClaudeFamily(${alias}) should detect ${tier}`,
-      );
-    }
-  }
-});
-
-test('tier-prefixed aliases resolve directly without engaging the Claude family fallback', () => {
-  // No ANTHROPIC_API_KEY — family fallback would normally engage for unmapped
-  // claude-haiku-*/sonnet-*/opus-* models. The tier aliases must short-circuit
-  // because their route is explicitly non-Anthropic.
-  const config = loadConfig({ OLLAMA_API_KEY: 'k', HUGGINGFACE_API_KEY: 'k' });
-
-  const haiku = resolveModelForUpstream('claude-haiku-fast', config);
-  assert.equal(haiku.upstreamModel, 'qwen3-coder-next:cloud');
-  assert.equal(haiku.requestAlias, 'claude-haiku-fast');
-
-  const sonnet = resolveModelForUpstream('claude-sonnet-deepseek-r1', config);
-  assert.equal(sonnet.upstreamModel, 'deepseek-ai/DeepSeek-R1');
-  assert.equal(sonnet.requestAlias, 'claude-sonnet-deepseek-r1');
-
-  const opus = resolveModelForUpstream('claude-opus-llama-405b', config);
-  assert.equal(opus.upstreamModel, 'meta-llama/Llama-3.1-405B-Instruct');
-  assert.equal(opus.requestAlias, 'claude-opus-llama-405b');
-
-  // Dated tier-prefixed alias (Claude Desktop may add a date suffix internally).
-  const datedSonnet = resolveModelForUpstream('claude-sonnet-coder-20260514', config);
-  assert.equal(datedSonnet.upstreamModel, 'qwen3-coder:480b-cloud');
-  assert.equal(datedSonnet.requestAlias, 'claude-sonnet-coder');
-});
-
-test('/v1/models exposes tier-prefixed aliases (Cowork picker source)', async (t) => {
-  const proxy = createProxyServer(createTestConfig({}));
-  await listen(proxy);
-  t.after(() => close(proxy));
-
-  const response = await getJson(`http://127.0.0.1:${proxy.address().port}/v1/models?limit=1000`);
-  assert.equal(response.statusCode, 200);
-
-  const ids = new Set(response.body.data.map((m) => m.id));
-  for (const required of [
-    // 5 haiku
-    'claude-haiku-fast', 'claude-haiku-llama-8b', 'claude-haiku-gpt-oss-20b',
-    'claude-haiku-phi-4', 'claude-haiku-glm',
-    // 6 sonnet
-    'claude-sonnet-coder', 'claude-sonnet-llama-70b', 'claude-sonnet-deepseek-r1',
-    'claude-sonnet-glm', 'claude-sonnet-kimi', 'claude-sonnet-mistral',
-    // 5 opus
-    'claude-opus-gpt-oss-120b', 'claude-opus-kimi-1t', 'claude-opus-deepseek-pro',
-    'claude-opus-llama-405b', 'claude-opus-qwen-coder-480b',
-  ]) {
-    assert.ok(ids.has(required), `expected ${required} in /v1/models`);
-  }
 });
 
 test('HEAD / returns 200 with content-type but no body', async (t) => {

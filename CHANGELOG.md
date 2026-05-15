@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-05-15
+
+### Reverted
+
+- **`/v1/models` pagination** (added in 0.3.1) is removed. The endpoint now
+  always returns the entire catalog with `has_more: false`, ignoring the
+  `?limit`, `?after_id`, and `?before_id` query parameters. Empirically, the
+  partial responses we sent for `?limit=1` probes caused both Claude Desktop's
+  Gateway picker and Claude Code's `/model` picker to display a truncated
+  model list. This is the same shape that worked in 0.2.0 (commit 6315023)
+  and is the only behaviour that's been verified to work end-to-end.
+- **The 16 tier-prefixed aliases** (added in 0.4.0) are removed. They were
+  introduced based on the wrong hypothesis that Cowork filters models by
+  `claude-(haiku|sonnet|opus)-*` prefix; in practice Cowork's picker showed
+  every Claude alias at 0.2.0, including `claude-ollama-*` and others. The
+  picker truncation we observed turned out to be downstream of the
+  pagination regression, not the alias naming. Removing these clutter
+  entries also gets the default catalog back to a clean 84 models.
+
+### Kept
+
+- HuggingFace Inference Router provider and 22 `claude-hf-*` aliases.
+- Local `POST /v1/messages/count_tokens` handler (heuristic estimate).
+- `GET /` and `HEAD /` local probe handler.
+- Claude family fallback for dated Claude model names.
+- `/v1/v1/...` path-duplication guard.
+- `REWRITE_RESPONSES` defaulting to `false`.
+
+### Tests
+
+- 6 tests removed (4 pagination + 3 tier-alias) and 1 added (a single
+  parametrised test asserting `/v1/models` returns the full catalog for
+  every `?limit` value clients are known to send). Suite is **52 cases**,
+  all passing.
+
 ## [0.4.0] — 2026-05-14
 
 ### Added

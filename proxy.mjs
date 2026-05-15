@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 // server/index.mjs by the manifest test.
 // ─────────────────────────────────────────────────────────────────────────────
 export const SERVER_NAME = 'claude-model-proxy';
-export const SERVER_VERSION = '0.4.0';
+export const SERVER_VERSION = '0.4.1';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Debug logging — gated by DEBUG_PROXY=true (default off)
@@ -106,35 +106,6 @@ export const DEFAULT_MODEL_MAP = Object.freeze({
   'claude-dsv4-flash': 'deepseek-v4-flash:cloud',
   'claude-dsv4-pro': 'deepseek-v4-pro:cloud',
   'claude-glm51': 'glm-5.1:cloud',
-  // ───────────────────────────────────────────────────────────────────────
-  // Tier-prefixed aliases. Claude Desktop's Cowork 3P model picker only
-  // surfaces models whose id matches `claude-(haiku|sonnet|opus)-*`. These
-  // entries route to the same Ollama Cloud / HuggingFace upstreams as the
-  // longer claude-ollama-* / claude-hf-* aliases above, giving Cowork users
-  // a tier-organised picker without losing the explicit-provider aliases.
-  // Routes are explicitly 'ollama' / 'huggingface' so the Claude family
-  // fallback (which only kicks in for non-mapped Anthropic-routed models)
-  // never engages for these.
-  // ───────────────────────────────────────────────────────────────────────
-  // Haiku tier — fast and small (≤30B params or specialised small).
-  'claude-haiku-fast': 'qwen3-coder-next:cloud',
-  'claude-haiku-llama-8b': 'meta-llama/Llama-3.1-8B-Instruct',
-  'claude-haiku-gpt-oss-20b': 'gpt-oss:20b-cloud',
-  'claude-haiku-phi-4': 'microsoft/phi-4',
-  'claude-haiku-glm': 'glm-4.7:cloud',
-  // Sonnet tier — balanced mid-range (30B-200B equivalent).
-  'claude-sonnet-coder': 'qwen3-coder:480b-cloud',
-  'claude-sonnet-llama-70b': 'meta-llama/Llama-3.3-70B-Instruct',
-  'claude-sonnet-deepseek-r1': 'deepseek-ai/DeepSeek-R1',
-  'claude-sonnet-glm': 'glm-5.1:cloud',
-  'claude-sonnet-kimi': 'kimi-k2.6:cloud',
-  'claude-sonnet-mistral': 'mistralai/Mistral-Large-Instruct-2411',
-  // Opus tier — largest and most capable (>200B equivalent).
-  'claude-opus-gpt-oss-120b': 'gpt-oss:120b-cloud',
-  'claude-opus-kimi-1t': 'kimi-k2:1t-cloud',
-  'claude-opus-deepseek-pro': 'deepseek-v4-pro:cloud',
-  'claude-opus-llama-405b': 'meta-llama/Llama-3.1-405B-Instruct',
-  'claude-opus-qwen-coder-480b': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
   // HuggingFace Inference Router (OpenAI-compatible). The proxy talks to
   //   https://router.huggingface.co/v1/chat/completions
   // and HF Router routes to whichever underlying provider has the model
@@ -315,26 +286,6 @@ export const DEFAULT_MODEL_ROUTES = Object.freeze({
   'claude-dsv4-flash': 'ollama',
   'claude-dsv4-pro': 'ollama',
   'claude-glm51': 'ollama',
-  // Tier-prefixed aliases. Routes are explicit per-alias so resolveModelForUpstream
-  // does NOT engage the Anthropic family fallback for these entries (the
-  // fallback only fires when modelRoutes[alias] === 'anthropic' AND
-  // ANTHROPIC_API_KEY is empty).
-  'claude-haiku-fast': 'ollama',
-  'claude-haiku-llama-8b': 'huggingface',
-  'claude-haiku-gpt-oss-20b': 'ollama',
-  'claude-haiku-phi-4': 'huggingface',
-  'claude-haiku-glm': 'ollama',
-  'claude-sonnet-coder': 'ollama',
-  'claude-sonnet-llama-70b': 'huggingface',
-  'claude-sonnet-deepseek-r1': 'huggingface',
-  'claude-sonnet-glm': 'ollama',
-  'claude-sonnet-kimi': 'ollama',
-  'claude-sonnet-mistral': 'huggingface',
-  'claude-opus-gpt-oss-120b': 'ollama',
-  'claude-opus-kimi-1t': 'ollama',
-  'claude-opus-deepseek-pro': 'ollama',
-  'claude-opus-llama-405b': 'huggingface',
-  'claude-opus-qwen-coder-480b': 'huggingface',
   'claude-hf-llama-3.3-70b': 'huggingface',
   'claude-hf-llama-3.1-405b': 'huggingface',
   'claude-hf-llama-3.1-70b': 'huggingface',
@@ -795,21 +746,28 @@ function handleRootRequest(req, res, config) {
   sendJson(res, 200, payload);
 }
 
-// Anthropic Messages models endpoint — paginated.
-//   limit       1..1000      (we default to 1000 so a naive client gets everything)
-//   after_id    cursor       returns models strictly after the given id
-//   before_id   cursor       returns models strictly before the given id
-// Response shape matches https://docs.anthropic.com/en/api/models-list.
-const MODELS_LIMIT_DEFAULT = 1000;
-const MODELS_LIMIT_MAX = 1000;
-
+// Anthropic Messages models endpoint.
+//
+// We deliberately return the entire catalog with has_more=false regardless of
+// the ?limit / ?after_id / ?before_id query parameters. Both Claude Desktop's
+// Gateway picker and Claude Code's `/model` picker probe with ?limit=1 first
+// to test connectivity, then fetch with ?limit=1000. Empirically, returning a
+// partial response on the ?limit=1 probe (even with has_more=true) causes
+// some clients to display only the first model — see commits 4c102da..49a7716
+// for the regression and v0.4.1 for the revert. Returning the full list every
+// time is the only behaviour that works across every Claude surface tested.
 function handleModelsRequest(req, res, config) {
   const url = new URL(req.url || '/', 'http://127.0.0.1');
   const pathname = url.pathname;
   const allModels = listConfiguredModels(config);
 
   if (pathname === '/v1/models') {
-    sendJson(res, 200, paginateModels(allModels, url.searchParams));
+    sendJson(res, 200, {
+      data: allModels,
+      first_id: allModels[0]?.id ?? null,
+      has_more: false,
+      last_id: allModels.at(-1)?.id ?? null,
+    });
     return;
   }
 
@@ -824,61 +782,6 @@ function handleModelsRequest(req, res, config) {
   }
 
   sendJson(res, 200, model);
-}
-
-function paginateModels(allModels, searchParams) {
-  const total = allModels.length;
-  const limit = parsePositiveInt(
-    searchParams.get('limit'),
-    MODELS_LIMIT_DEFAULT,
-    MODELS_LIMIT_MAX,
-  );
-  const afterId = searchParams.get('after_id');
-  const beforeId = searchParams.get('before_id');
-
-  // Default window is the whole list, in catalog (id-sorted) order.
-  let lo = 0;
-  let hi = total;
-
-  if (afterId) {
-    const i = allModels.findIndex((m) => m.id === afterId);
-    if (i >= 0) lo = i + 1;
-  }
-
-  if (beforeId) {
-    const i = allModels.findIndex((m) => m.id === beforeId);
-    if (i >= 0) {
-      // before_id paginates backward: return up to `limit` items ending right
-      // before the cursor. Compute lo from hi.
-      hi = i;
-      lo = Math.max(0, hi - limit);
-      const page = allModels.slice(lo, hi);
-      return {
-        data: page,
-        first_id: page[0]?.id ?? null,
-        has_more: lo > 0,
-        last_id: page.at(-1)?.id ?? null,
-      };
-    }
-  }
-
-  const pageEnd = Math.min(hi, lo + limit);
-  const page = allModels.slice(lo, pageEnd);
-
-  return {
-    data: page,
-    first_id: page[0]?.id ?? null,
-    has_more: pageEnd < hi,
-    last_id: page.at(-1)?.id ?? null,
-  };
-}
-
-function parsePositiveInt(raw, fallback, max) {
-  if (raw === null || raw === undefined || raw === '') return fallback;
-  const parsed = Number.parseInt(String(raw), 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  if (typeof max === 'number' && parsed > max) return max;
-  return parsed;
 }
 
 const MODELS_CREATED_AT = '2026-01-01T00:00:00Z';
