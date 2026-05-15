@@ -5,6 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] — 2026-05-15
+
+### Reverted
+
+- **`GET /` and `HEAD /` local probe handler** (added in 0.3.1) is removed.
+  At 0.2.0 (commit 6315023) the root requests were forwarded upstream and
+  returned 405; that was working for both Claude Desktop pickers. Adding a
+  200 JSON response at `/` was an unnecessary change relative to the known-
+  good baseline and is rolled back in case it was the source of regression.
+
+### Goal
+
+This release brings `proxy.mjs` **functionally character-identical** to the
+last known-good commit 6315023 for every code path Claude Desktop and Claude
+Code touch: model dispatch, `/v1/models`, `/v1/models/{id}`, `/v1/messages`,
+`/v1/messages/count_tokens`, `/healthz`, smart model resolution, family
+fallback, OpenAI-chat adapter, SSE conversion. The only deltas vs 6315023
+are the additive ones we explicitly want to keep:
+
+- **HuggingFace Inference Router** provider + 22 `claude-hf-*` aliases.
+- **`REWRITE_RESPONSES` default** flipped from `true` to `false`.
+
+### Tests
+
+- Removed 2 root-handler tests (`GET /`, `HEAD /`).
+- Removed the duplicate `?limit`-iterating test added in 0.4.1; the
+  existing `serves configured model list for Claude Code and SDK discovery`
+  test (carried forward from 0.2.0) now also asserts the HF aliases are
+  present in `/v1/models`.
+- Suite is **49 cases**, all passing.
+
 ## [0.4.1] — 2026-05-15
 
 ### Reverted

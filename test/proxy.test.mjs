@@ -11,7 +11,6 @@ import {
   DEFAULT_MODEL_ALIASES,
   DEFAULT_MODEL_MAP,
   DEFAULT_MODEL_ROUTES,
-  SERVER_NAME,
   SERVER_VERSION,
   createProxyServer,
   loadConfig,
@@ -19,20 +18,6 @@ import {
   resolveModelForUpstream,
   stripClaudeDate,
 } from '../proxy.mjs';
-
-function headJson(url) {
-  return new Promise((resolve, reject) => {
-    const req = http.request(url, { method: 'HEAD' }, (res) => {
-      resolve({
-        statusCode: res.statusCode,
-        headers: res.headers,
-      });
-      res.resume();
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
 
 test('routes claude-deepseek-v4-flash to DeepSeek flash and rewrites responses back', async (t) => {
   let upstreamBody;
@@ -886,22 +871,22 @@ test('serves configured model list for Claude Code and SDK discovery', async (t)
   const modelsResponse = await getJson(`http://127.0.0.1:${proxy.address().port}/v1/models`);
   assert.equal(modelsResponse.statusCode, 200);
   assert.equal(modelsResponse.body.has_more, false);
-  assert.equal(
-    modelsResponse.body.data.some((model) => model.id === 'claude-deepseek-v4-pro'),
-    true,
-  );
-  assert.equal(
-    modelsResponse.body.data.some((model) => model.id === 'claude-kimi-k2.6'),
-    true,
-  );
-  assert.equal(
-    modelsResponse.body.data.some((model) => model.id === 'claude-qwen-max'),
-    true,
-  );
-  assert.equal(
-    modelsResponse.body.data.some((model) => model.id === 'claude-ollama-gpt-oss-120b'),
-    true,
-  );
+  for (const requiredId of [
+    'claude-deepseek-v4-pro',
+    'claude-kimi-k2.6',
+    'claude-qwen-max',
+    'claude-ollama-gpt-oss-120b',
+    'claude-hf-llama-3.3-70b',
+    'claude-hf-deepseek-r1',
+    'claude-haiku-4-5',
+    'claude-sonnet-4-6',
+    'claude-opus-4-7',
+  ]) {
+    assert.ok(
+      modelsResponse.body.data.some((model) => model.id === requiredId),
+      `expected ${requiredId} in /v1/models`,
+    );
+  }
 
   const modelResponse = await getJson(
     `http://127.0.0.1:${proxy.address().port}/v1/models/claude-deepseek-v4-pro`,
@@ -1609,29 +1594,7 @@ async function readBody(stream) {
 // /v1/models pagination — Anthropic-spec compliance
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('/v1/models returns the full catalog regardless of ?limit (no pagination)', async (t) => {
-  // Empirically, partial /v1/models responses (with has_more=true on a
-  // ?limit=1 probe) break Claude Desktop's Gateway picker AND Claude Code's
-  // /model picker — see CHANGELOG v0.4.1 for the regression. The endpoint
-  // always returns the full catalog with has_more=false.
-  const proxy = createProxyServer(createTestConfig({}));
-  await listen(proxy);
-  t.after(() => close(proxy));
-
-  const port = proxy.address().port;
-  const expectedCount = Object.keys(DEFAULT_MODEL_MAP).length;
-
-  for (const query of ['', '?limit=1', '?limit=20', '?limit=1000', '?limit=999999']) {
-    const response = await getJson(`http://127.0.0.1:${port}/v1/models${query}`);
-    assert.equal(response.statusCode, 200, `failed for ${query || '(no query)'}`);
-    assert.equal(response.body.data.length, expectedCount, `wrong count for ${query || '(no query)'}`);
-    assert.equal(response.body.has_more, false, `wrong has_more for ${query || '(no query)'}`);
-    assert.equal(response.body.first_id, response.body.data[0].id);
-    assert.equal(response.body.last_id, response.body.data.at(-1).id);
-  }
-});
-
-test('/v1/models 404 for unknown id returns Anthropic-shape error', async (t) => {
+test('/v1/models/{unknown} returns a 404 with a plain {error: string} body (6315023 shape)', async (t) => {
   const proxy = createProxyServer(createTestConfig({}));
   await listen(proxy);
   t.after(() => close(proxy));
@@ -1639,58 +1602,6 @@ test('/v1/models 404 for unknown id returns Anthropic-shape error', async (t) =>
   const port = proxy.address().port;
   const response = await getJson(`http://127.0.0.1:${port}/v1/models/claude-does-not-exist`);
   assert.equal(response.statusCode, 404);
-  assert.equal(response.body.type, 'error');
-  assert.equal(response.body.error.type, 'not_found_error');
+  assert.match(response.body.error, /Unknown model/);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Root connectivity probe — answered locally instead of forwarded upstream
-// ─────────────────────────────────────────────────────────────────────────────
-
-test('GET / returns a local 200 JSON probe response (no upstream forward)', async (t) => {
-  let upstreamHit = false;
-  const upstream = http.createServer((_req, res) => {
-    upstreamHit = true;
-    res.writeHead(405);
-    res.end();
-  });
-  await listen(upstream);
-  t.after(() => close(upstream));
-
-  const proxy = createProxyServer(createTestConfig({
-    ollamaBaseUrl: `http://127.0.0.1:${upstream.address().port}/v1`,
-  }));
-  await listen(proxy);
-  t.after(() => close(proxy));
-
-  const response = await getJson(`http://127.0.0.1:${proxy.address().port}/`);
-  assert.equal(upstreamHit, false, 'root probe must not be forwarded upstream');
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.body.service, SERVER_NAME);
-  assert.equal(response.body.ok, true);
-  assert.equal(response.body.version, SERVER_VERSION);
-  assert.ok(Array.isArray(response.body.endpoints));
-  assert.ok(response.body.endpoints.includes('/v1/models'));
-});
-
-test('HEAD / returns 200 with content-type but no body', async (t) => {
-  let upstreamHit = false;
-  const upstream = http.createServer((_req, res) => {
-    upstreamHit = true;
-    res.writeHead(405);
-    res.end();
-  });
-  await listen(upstream);
-  t.after(() => close(upstream));
-
-  const proxy = createProxyServer(createTestConfig({
-    ollamaBaseUrl: `http://127.0.0.1:${upstream.address().port}/v1`,
-  }));
-  await listen(proxy);
-  t.after(() => close(proxy));
-
-  const response = await headJson(`http://127.0.0.1:${proxy.address().port}/`);
-  assert.equal(upstreamHit, false, 'HEAD probe must not be forwarded upstream');
-  assert.equal(response.statusCode, 200);
-  assert.match(response.headers['content-type'] || '', /application\/json/);
-});

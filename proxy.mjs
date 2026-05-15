@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 // server/index.mjs by the manifest test.
 // ─────────────────────────────────────────────────────────────────────────────
 export const SERVER_NAME = 'claude-model-proxy';
-export const SERVER_VERSION = '0.4.1';
+export const SERVER_VERSION = '0.4.2';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Debug logging — gated by DEBUG_PROXY=true (default off)
@@ -641,25 +641,13 @@ export function createProxyServer(config = loadConfig()) {
         return;
       }
 
-      // 2. Local root probe — Claude Desktop and other clients hit GET / or
-      //    HEAD / for connectivity. Answer locally to avoid forwarding the
-      //    probe to a random upstream that may 405.
-      if (
-        (clientReq.method === 'GET' || clientReq.method === 'HEAD')
-        && isRootRequest(clientReq.url)
-      ) {
-        handleRootRequest(clientReq, clientRes, normalizedConfig);
-        return;
-      }
-
-      // 3. Local /v1/models discovery (Anthropic-compatible shape with
-      //    full pagination: limit, after_id, before_id, has_more).
+      // 2. Local /v1/models discovery (Anthropic-compatible shape, matches 6315023).
       if (clientReq.method === 'GET' && isModelsRequest(clientReq.url)) {
         handleModelsRequest(clientReq, clientRes, normalizedConfig);
         return;
       }
 
-      // 4. /v1/messages/count_tokens — answered locally with a character heuristic.
+      // 3. /v1/messages/count_tokens — answered locally with a character heuristic.
       //    OpenAI-compatible upstreams (Ollama, OpenAI, etc.) don't expose this
       //    endpoint, and the Anthropic upstream's response would be wrong because
       //    the upstream model is different from the alias the client asked about.
@@ -707,11 +695,6 @@ export function createProxyServer(config = loadConfig()) {
 // Local endpoints
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isRootRequest(rawUrl = '/') {
-  const pathname = new URL(rawUrl, 'http://127.0.0.1').pathname;
-  return pathname === '/' || pathname === '';
-}
-
 function isModelsRequest(rawUrl = '/') {
   const pathname = new URL(rawUrl, 'http://127.0.0.1').pathname;
   return pathname === '/v1/models' || pathname.startsWith('/v1/models/');
@@ -723,60 +706,30 @@ function isCountTokensRequest(rawUrl = '/') {
     || pathname.endsWith('/v1/messages/count_tokens');
 }
 
-function handleRootRequest(req, res, config) {
-  const payload = {
-    service: 'claude-model-proxy',
-    version: SERVER_VERSION,
-    ok: true,
-    endpoints: ['/healthz', '/v1/models', '/v1/models/{id}', '/v1/messages', '/v1/messages/count_tokens'],
-    baseUrl: config.baseUrl,
-    modelCount: Object.keys(config.modelMap).length,
-  };
-
-  if (req.method === 'HEAD') {
-    const body = Buffer.from(JSON.stringify(payload));
-    res.writeHead(200, {
-      'content-type': 'application/json; charset=utf-8',
-      'content-length': String(body.length),
-    });
-    res.end();
-    return;
-  }
-
-  sendJson(res, 200, payload);
-}
-
-// Anthropic Messages models endpoint.
-//
-// We deliberately return the entire catalog with has_more=false regardless of
-// the ?limit / ?after_id / ?before_id query parameters. Both Claude Desktop's
-// Gateway picker and Claude Code's `/model` picker probe with ?limit=1 first
-// to test connectivity, then fetch with ?limit=1000. Empirically, returning a
-// partial response on the ?limit=1 probe (even with has_more=true) causes
-// some clients to display only the first model — see commits 4c102da..49a7716
-// for the regression and v0.4.1 for the revert. Returning the full list every
-// time is the only behaviour that works across every Claude surface tested.
+// Anthropic Messages models endpoint — character-identical to v0.2.0
+// (commit 6315023), which was the last known-good shape. Query parameters
+// are intentionally ignored: the endpoint always returns the entire catalog
+// with has_more=false. Anything more sophisticated has broken at least one
+// Claude surface in past versions.
 function handleModelsRequest(req, res, config) {
-  const url = new URL(req.url || '/', 'http://127.0.0.1');
-  const pathname = url.pathname;
-  const allModels = listConfiguredModels(config);
+  const pathname = new URL(req.url || '/', 'http://127.0.0.1').pathname;
+  const models = listConfiguredModels(config);
 
   if (pathname === '/v1/models') {
     sendJson(res, 200, {
-      data: allModels,
-      first_id: allModels[0]?.id ?? null,
+      data: models,
+      first_id: models[0]?.id || null,
       has_more: false,
-      last_id: allModels.at(-1)?.id ?? null,
+      last_id: models.at(-1)?.id || null,
     });
     return;
   }
 
   const modelId = decodeURIComponent(pathname.slice('/v1/models/'.length));
-  const model = allModels.find((item) => item.id === modelId);
+  const model = models.find((item) => item.id === modelId);
   if (!model) {
     sendJson(res, 404, {
-      type: 'error',
-      error: { type: 'not_found_error', message: `Unknown model: ${modelId}` },
+      error: `Unknown model: ${modelId}`,
     });
     return;
   }
