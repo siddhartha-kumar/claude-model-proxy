@@ -8,7 +8,7 @@ model names onto the upstream of your choice.**
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A518-43853d?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 [![Signed commits](https://img.shields.io/badge/commits-signed%20(SSH)-success?logo=git)](#security)
-[![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-81%20passing-brightgreen)](#testing)
 [![MCPB](https://img.shields.io/badge/Claude%20Desktop-MCPB%20extension-7c3aed)](#claude-desktop-extension)
 
 </div>
@@ -141,7 +141,7 @@ npm install
 npm run build:mcpb
 ```
 
-Output: `dist/claude-model-proxy-0.4.1.mcpb`.
+Output: `dist/claude-model-proxy-0.4.3.mcpb`.
 
 1. **Enable Developer Mode** in Claude Desktop (Settings → General, or Help
    menu — varies by build; restart the app afterwards).
@@ -174,7 +174,7 @@ Output: `dist/claude-model-proxy-0.4.1.mcpb`.
    | Gateway base URL | `http://127.0.0.1:8787` |
    | Gateway API key | any non-empty placeholder (e.g. `dummy-claude-model-proxy`) |
    | Gateway auth scheme | `bearer` |
-   | Model list | *Fetch from gateway* — auto-populates 84 aliases |
+   | Model list | *Fetch from gateway* — auto-populates 62 aliases |
 
 5. **Open a new chat** and pick any `claude-ollama-*` or `claude-hf-*` model.
    Anything Claude Desktop sends in the background (title generation,
@@ -305,7 +305,8 @@ single blob with the same keys:
 
 ## Model Catalog
 
-The default catalog ships with 84 aliases across all providers. The
+The default catalog ships with 62 aliases across all providers (HuggingFace
+Router aliases were temporarily removed in v0.4.3 — see CHANGELOG). The
 canonical, live source of truth is always:
 
 ```sh
@@ -381,36 +382,28 @@ A condensed summary by provider follows.
 > **Important.** Ollama Cloud requires the `-cloud` (sized) or `:cloud`
 > (unsized) routing tag; bare ids hit local-only weights and 404.
 
-### HuggingFace Inference Router — 22 aliases
+### HuggingFace Inference Router — not bundled in v0.4.3
 
-| Alias | Upstream id |
-| --- | --- |
-| `claude-hf-llama-3.3-70b` | `meta-llama/Llama-3.3-70B-Instruct` |
-| `claude-hf-llama-3.1-405b` | `meta-llama/Llama-3.1-405B-Instruct` |
-| `claude-hf-llama-3.1-70b` | `meta-llama/Llama-3.1-70B-Instruct` |
-| `claude-hf-llama-3.1-8b` | `meta-llama/Llama-3.1-8B-Instruct` |
-| `claude-hf-qwen-2.5-72b` | `Qwen/Qwen2.5-72B-Instruct` |
-| `claude-hf-qwen-2.5-coder-32b` | `Qwen/Qwen2.5-Coder-32B-Instruct` |
-| `claude-hf-qwen-3-coder-480b` | `Qwen/Qwen3-Coder-480B-A35B-Instruct` |
-| `claude-hf-qwen-3-235b` | `Qwen/Qwen3-235B-A22B` |
-| `claude-hf-deepseek-v3` | `deepseek-ai/DeepSeek-V3` |
-| `claude-hf-deepseek-v3.1` | `deepseek-ai/DeepSeek-V3.1` |
-| `claude-hf-deepseek-r1` | `deepseek-ai/DeepSeek-R1` |
-| `claude-hf-deepseek-r1-distill-llama-70b` | `deepseek-ai/DeepSeek-R1-Distill-Llama-70B` |
-| `claude-hf-mistral-large-2411` | `mistralai/Mistral-Large-Instruct-2411` |
-| `claude-hf-mixtral-8x7b` | `mistralai/Mixtral-8x7B-Instruct-v0.1` |
-| `claude-hf-mistral-7b` | `mistralai/Mistral-7B-Instruct-v0.3` |
-| `claude-hf-gemma-2-27b` | `google/gemma-2-27b-it` |
-| `claude-hf-gemma-2-9b` | `google/gemma-2-9b-it` |
-| `claude-hf-phi-4` | `microsoft/phi-4` |
-| `claude-hf-phi-3-medium` | `microsoft/Phi-3-medium-128k-instruct` |
-| `claude-hf-command-r-plus` | `CohereForAI/c4ai-command-r-plus` |
-| `claude-hf-yi-1.5-34b` | `01-ai/Yi-1.5-34B-Chat` |
-| `claude-hf-nemotron-70b` | `nvidia/Llama-3.1-Nemotron-70B-Instruct-HF` |
+The 22 `claude-hf-*` aliases that shipped in v0.3.0–v0.4.2 were removed in
+v0.4.3 as an empirical test: we're verifying whether Claude Desktop's
+gateway picker has a catalog-count threshold above which it falls back to a
+hardcoded "Claude tier" list. The default catalog is back to the 62 models
+that worked at commit 6315023.
 
-HF Router auto-routes each call to whichever underlying provider (Together,
-Fireworks, HF Inference, Hyperbolic, SambaNova, Novita, Nebius) currently has
-the model live and cheapest.
+The `huggingface` provider configuration is still wired up — only the
+bundled aliases are gone. Add HF models per-installation via env overrides:
+
+```bash
+# Single HF model
+MODEL_MAP='{"claude-hf-deepseek-r1":"deepseek-ai/DeepSeek-R1"}'
+MODEL_ROUTES='{"claude-hf-deepseek-r1":"huggingface"}'
+HUGGINGFACE_API_KEY=hf_xxx   # or HF_API_KEY / HF_TOKEN
+```
+
+HF Router (https://router.huggingface.co/v1) auto-routes each call to
+whichever underlying provider (Together, Fireworks, HF Inference, Hyperbolic,
+SambaNova, Novita, Nebius) currently has the model live and cheapest. One
+token gives you access to all of them.
 
 ### Conflict resolution
 
@@ -428,7 +421,7 @@ The proxy implements the Anthropic Messages REST surface:
 | --- | --- | --- | --- |
 | `GET` / `HEAD` | `/` | local | Service identity probe — returns `{service, version, ok, endpoints, baseUrl, modelCount}`. Used by Claude Desktop / Bun-based agent SDKs for connectivity checks. |
 | `GET` | `/healthz` | local | Full proxy state, provider key flags, fallback table. |
-| `GET` | `/v1/models` | local | Anthropic-compatible catalog (84 default aliases). Always returns the full list with `has_more: false`; `?limit`/`?after_id`/`?before_id` are accepted but ignored because some Claude clients truncate the dropdown when given a partial response. |
+| `GET` | `/v1/models` | local | Anthropic-compatible catalog (62 default aliases in v0.4.3 — see CHANGELOG). Always returns the full list with `has_more: false`; `?limit`/`?after_id`/`?before_id` are accepted but ignored. |
 | `GET` | `/v1/models/{id}` | local | Single-model lookup; 404 returns the `{type:"error", error:{type:"not_found_error", ...}}` envelope. |
 | `POST` | `/v1/messages` | forwarded | Resolved per request body's `model`. |
 | `POST` | `/v1/messages/count_tokens` | local | Deterministic character heuristic, returns `{"input_tokens": <n>}`. |
@@ -438,15 +431,16 @@ The proxy implements the Anthropic Messages REST surface:
 Claude Desktop's **Cowork 3P** picker reads its model list from `/v1/models`.
 Since v0.4.1 the proxy always returns the full catalog in a single response
 (no pagination), so the picker shows every alias the proxy knows about — all
-84 by default. Pick any `claude-haiku-*`, `claude-sonnet-*`, `claude-opus-*`,
-`claude-ollama-*`, `claude-hf-*`, `claude-deepseek-*`, `claude-glm-*`,
+62 by default in v0.4.3. Pick any `claude-haiku-*`, `claude-sonnet-*`,
+`claude-opus-*`, `claude-ollama-*`, `claude-deepseek-*`, `claude-glm-*`,
 `claude-mimo-*`, `claude-kimi-*`, `claude-gpt-*`, `claude-gemini-*`, or
 `claude-qwen-*` entry from the dropdown.
 
 If the picker looks truncated, click **Refresh** / **Check again** — Claude
 Desktop caches the response and you may be seeing a stale list from a
 previous proxy version. Curling `http://127.0.0.1:8787/v1/models | jq '.data | length'`
-should report 84.
+should report 62 (or your custom total if you've added HF aliases via env
+overrides).
 
 ## Claude Code CLI Integration
 
@@ -497,7 +491,7 @@ npm run launch-agent:uninstall
 npm test
 ```
 
-The suite is **52 Node `node:test` cases**, run against ephemeral
+The suite is **81 Node `node:test` cases**, run against ephemeral
 HTTP servers so no upstream credentials are required. Coverage includes:
 
 - Per-provider routing for all 10 providers.
@@ -644,7 +638,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ```
 .
-├── manifest.json              # MCPB extension manifest (v0.4.1)
+├── manifest.json              # MCPB extension manifest (v0.4.3)
 ├── proxy.mjs                  # HTTP gateway proxy and provider adapters
 ├── server/index.mjs           # MCP stdio server hosting the proxy
 ├── scripts/                   # Build, LaunchAgent, and Node helper scripts
@@ -654,7 +648,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 │   ├── run-launch-agent.sh
 │   └── uninstall-launch-agent.mjs
 ├── srcs/                      # README screenshots and images
-├── test/proxy.test.mjs        # Node test suite (52 cases)
+├── test/proxy.test.mjs        # Node test suite (81 cases)
 ├── start.sh                   # Standalone POSIX launcher with PID file
 ├── .env.example               # Annotated configuration template
 ├── .github/workflows/ci.yml   # CI: lint, test, build

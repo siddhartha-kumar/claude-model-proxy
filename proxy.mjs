@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 // server/index.mjs by the manifest test.
 // ─────────────────────────────────────────────────────────────────────────────
 export const SERVER_NAME = 'claude-model-proxy';
-export const SERVER_VERSION = '0.4.2';
+export const SERVER_VERSION = '0.4.3';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Debug logging — gated by DEBUG_PROXY=true (default off)
@@ -106,33 +106,12 @@ export const DEFAULT_MODEL_MAP = Object.freeze({
   'claude-dsv4-flash': 'deepseek-v4-flash:cloud',
   'claude-dsv4-pro': 'deepseek-v4-pro:cloud',
   'claude-glm51': 'glm-5.1:cloud',
-  // HuggingFace Inference Router (OpenAI-compatible). The proxy talks to
-  //   https://router.huggingface.co/v1/chat/completions
-  // and HF Router routes to whichever underlying provider has the model
-  // available (Together, Fireworks, HF Inference, Hyperbolic, SambaNova,
-  // Novita, Nebius, …). Model ids are HF repo paths.
-  'claude-hf-llama-3.3-70b': 'meta-llama/Llama-3.3-70B-Instruct',
-  'claude-hf-llama-3.1-405b': 'meta-llama/Llama-3.1-405B-Instruct',
-  'claude-hf-llama-3.1-70b': 'meta-llama/Llama-3.1-70B-Instruct',
-  'claude-hf-llama-3.1-8b': 'meta-llama/Llama-3.1-8B-Instruct',
-  'claude-hf-qwen-2.5-72b': 'Qwen/Qwen2.5-72B-Instruct',
-  'claude-hf-qwen-2.5-coder-32b': 'Qwen/Qwen2.5-Coder-32B-Instruct',
-  'claude-hf-qwen-3-coder-480b': 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
-  'claude-hf-qwen-3-235b': 'Qwen/Qwen3-235B-A22B',
-  'claude-hf-deepseek-v3': 'deepseek-ai/DeepSeek-V3',
-  'claude-hf-deepseek-v3.1': 'deepseek-ai/DeepSeek-V3.1',
-  'claude-hf-deepseek-r1': 'deepseek-ai/DeepSeek-R1',
-  'claude-hf-deepseek-r1-distill-llama-70b': 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B',
-  'claude-hf-mistral-large-2411': 'mistralai/Mistral-Large-Instruct-2411',
-  'claude-hf-mixtral-8x7b': 'mistralai/Mixtral-8x7B-Instruct-v0.1',
-  'claude-hf-mistral-7b': 'mistralai/Mistral-7B-Instruct-v0.3',
-  'claude-hf-gemma-2-27b': 'google/gemma-2-27b-it',
-  'claude-hf-gemma-2-9b': 'google/gemma-2-9b-it',
-  'claude-hf-phi-4': 'microsoft/phi-4',
-  'claude-hf-phi-3-medium': 'microsoft/Phi-3-medium-128k-instruct',
-  'claude-hf-command-r-plus': 'CohereForAI/c4ai-command-r-plus',
-  'claude-hf-yi-1.5-34b': '01-ai/Yi-1.5-34B-Chat',
-  'claude-hf-nemotron-70b': 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF',
+  // HuggingFace Router aliases were here until v0.4.3. We trimmed them to
+  // bring the default catalog back to the 62 models that worked in 6315023
+  // — testing whether Claude Desktop's Cowork/Code pickers truncate above
+  // some count threshold. The `huggingface` provider config still exists in
+  // loadConfig() below, so users can re-add HF models via MODEL_MAP /
+  // MODEL_ROUTES env overrides without restoring the bundled defaults.
   // Native Anthropic Claude (forwarded to Anthropic Messages when ANTHROPIC_API_KEY is set)
   'claude-haiku-4-5': 'claude-haiku-4-5',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
@@ -197,29 +176,8 @@ export const DEFAULT_MODEL_ALIASES = Object.freeze({
   'gemma4:31b-cloud': 'claude-ollama-gemma4-31b',
   'gemini-3-flash-preview:cloud': 'claude-ollama-gemini-3-flash-preview',
   'rnj-1:8b-cloud': 'claude-ollama-rnj-1',
-  // HuggingFace Inference Router — upstream id → Claude alias.
-  'meta-llama/Llama-3.3-70B-Instruct': 'claude-hf-llama-3.3-70b',
-  'meta-llama/Llama-3.1-405B-Instruct': 'claude-hf-llama-3.1-405b',
-  'meta-llama/Llama-3.1-70B-Instruct': 'claude-hf-llama-3.1-70b',
-  'meta-llama/Llama-3.1-8B-Instruct': 'claude-hf-llama-3.1-8b',
-  'Qwen/Qwen2.5-72B-Instruct': 'claude-hf-qwen-2.5-72b',
-  'Qwen/Qwen2.5-Coder-32B-Instruct': 'claude-hf-qwen-2.5-coder-32b',
-  'Qwen/Qwen3-Coder-480B-A35B-Instruct': 'claude-hf-qwen-3-coder-480b',
-  'Qwen/Qwen3-235B-A22B': 'claude-hf-qwen-3-235b',
-  'deepseek-ai/DeepSeek-V3': 'claude-hf-deepseek-v3',
-  'deepseek-ai/DeepSeek-V3.1': 'claude-hf-deepseek-v3.1',
-  'deepseek-ai/DeepSeek-R1': 'claude-hf-deepseek-r1',
-  'deepseek-ai/DeepSeek-R1-Distill-Llama-70B': 'claude-hf-deepseek-r1-distill-llama-70b',
-  'mistralai/Mistral-Large-Instruct-2411': 'claude-hf-mistral-large-2411',
-  'mistralai/Mixtral-8x7B-Instruct-v0.1': 'claude-hf-mixtral-8x7b',
-  'mistralai/Mistral-7B-Instruct-v0.3': 'claude-hf-mistral-7b',
-  'google/gemma-2-27b-it': 'claude-hf-gemma-2-27b',
-  'google/gemma-2-9b-it': 'claude-hf-gemma-2-9b',
-  'microsoft/phi-4': 'claude-hf-phi-4',
-  'microsoft/Phi-3-medium-128k-instruct': 'claude-hf-phi-3-medium',
-  'CohereForAI/c4ai-command-r-plus': 'claude-hf-command-r-plus',
-  '01-ai/Yi-1.5-34B-Chat': 'claude-hf-yi-1.5-34b',
-  'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF': 'claude-hf-nemotron-70b',
+  // HuggingFace upstream-id reverse aliases removed in v0.4.3 (see comment on
+  // DEFAULT_MODEL_MAP above). Re-add via MODEL_ALIASES env override if needed.
   'claude-haiku-4-5': 'claude-haiku-4-5',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
   'claude-opus-4-7': 'claude-opus-4-7',
@@ -286,28 +244,7 @@ export const DEFAULT_MODEL_ROUTES = Object.freeze({
   'claude-dsv4-flash': 'ollama',
   'claude-dsv4-pro': 'ollama',
   'claude-glm51': 'ollama',
-  'claude-hf-llama-3.3-70b': 'huggingface',
-  'claude-hf-llama-3.1-405b': 'huggingface',
-  'claude-hf-llama-3.1-70b': 'huggingface',
-  'claude-hf-llama-3.1-8b': 'huggingface',
-  'claude-hf-qwen-2.5-72b': 'huggingface',
-  'claude-hf-qwen-2.5-coder-32b': 'huggingface',
-  'claude-hf-qwen-3-coder-480b': 'huggingface',
-  'claude-hf-qwen-3-235b': 'huggingface',
-  'claude-hf-deepseek-v3': 'huggingface',
-  'claude-hf-deepseek-v3.1': 'huggingface',
-  'claude-hf-deepseek-r1': 'huggingface',
-  'claude-hf-deepseek-r1-distill-llama-70b': 'huggingface',
-  'claude-hf-mistral-large-2411': 'huggingface',
-  'claude-hf-mixtral-8x7b': 'huggingface',
-  'claude-hf-mistral-7b': 'huggingface',
-  'claude-hf-gemma-2-27b': 'huggingface',
-  'claude-hf-gemma-2-9b': 'huggingface',
-  'claude-hf-phi-4': 'huggingface',
-  'claude-hf-phi-3-medium': 'huggingface',
-  'claude-hf-command-r-plus': 'huggingface',
-  'claude-hf-yi-1.5-34b': 'huggingface',
-  'claude-hf-nemotron-70b': 'huggingface',
+  // HuggingFace routes removed in v0.4.3. Re-add via MODEL_ROUTES env override.
   'claude-haiku-4-5': 'anthropic',
   'claude-sonnet-4-6': 'anthropic',
   'claude-opus-4-7': 'anthropic',

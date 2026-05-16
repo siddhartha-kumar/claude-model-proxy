@@ -876,8 +876,6 @@ test('serves configured model list for Claude Code and SDK discovery', async (t)
     'claude-kimi-k2.6',
     'claude-qwen-max',
     'claude-ollama-gpt-oss-120b',
-    'claude-hf-llama-3.3-70b',
-    'claude-hf-deepseek-r1',
     'claude-haiku-4-5',
     'claude-sonnet-4-6',
     'claude-opus-4-7',
@@ -1034,7 +1032,9 @@ test('uses Anthropic-compatible provider base URLs by default', () => {
   assert.equal(config.modelRoutes['claude-ollama-glm-5.1'], 'ollama');
   assert.equal(config.modelRoutes['glm-5.1'], 'glm');
 
-  // HuggingFace provider defaults and route table.
+  // HuggingFace provider config remains wired up even though the bundled
+  // claude-hf-* aliases were trimmed in v0.4.3. Users can re-enable HF by
+  // setting MODEL_MAP / MODEL_ROUTES env overrides.
   assert.equal(
     config.providers.huggingface.upstreamBaseUrl.href,
     'https://router.huggingface.co/v1',
@@ -1042,52 +1042,13 @@ test('uses Anthropic-compatible provider base URLs by default', () => {
   assert.equal(config.providers.huggingface.format, 'openai-chat');
   assert.equal(config.providers.huggingface.authScheme, 'bearer');
 
-  assert.equal(
-    config.modelMap['claude-hf-llama-3.3-70b'],
-    'meta-llama/Llama-3.3-70B-Instruct',
-  );
-  assert.equal(
-    config.modelMap['claude-hf-deepseek-r1'],
-    'deepseek-ai/DeepSeek-R1',
-  );
-  assert.equal(
-    config.modelMap['claude-hf-qwen-3-coder-480b'],
-    'Qwen/Qwen3-Coder-480B-A35B-Instruct',
-  );
-
+  // No bundled claude-hf-* aliases or routes — that's the v0.4.3 trim.
   const hfRoutes = Object.entries(config.modelRoutes)
     .filter(([, provider]) => provider === 'huggingface')
     .map(([model]) => model);
-
-  for (const expected of [
-    'claude-hf-llama-3.3-70b',
-    'claude-hf-llama-3.1-405b',
-    'claude-hf-llama-3.1-70b',
-    'claude-hf-llama-3.1-8b',
-    'claude-hf-qwen-2.5-72b',
-    'claude-hf-qwen-2.5-coder-32b',
-    'claude-hf-qwen-3-coder-480b',
-    'claude-hf-qwen-3-235b',
-    'claude-hf-deepseek-v3',
-    'claude-hf-deepseek-v3.1',
-    'claude-hf-deepseek-r1',
-    'claude-hf-deepseek-r1-distill-llama-70b',
-    'claude-hf-mistral-large-2411',
-    'claude-hf-mixtral-8x7b',
-    'claude-hf-mistral-7b',
-    'claude-hf-gemma-2-27b',
-    'claude-hf-gemma-2-9b',
-    'claude-hf-phi-4',
-    'claude-hf-phi-3-medium',
-    'claude-hf-command-r-plus',
-    'claude-hf-yi-1.5-34b',
-    'claude-hf-nemotron-70b',
-  ]) {
-    assert.ok(
-      hfRoutes.includes(expected),
-      `expected ${expected} to route to huggingface provider`,
-    );
-  }
+  assert.deepEqual(hfRoutes, [], 'no claude-hf-* routes should be bundled by default');
+  const hfAliases = Object.keys(config.modelMap).filter((id) => id.startsWith('claude-hf-'));
+  assert.deepEqual(hfAliases, [], 'no claude-hf-* aliases should be bundled by default');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1299,7 +1260,16 @@ test('with rewriteResponses=false, upstream model ids are passed through unchang
   assert.equal(response.body.content[0].text, 'raw model id');
 });
 
-test('routes HuggingFace requests through the OpenAI-compatible router endpoint', async (t) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// HuggingFace routing — the bundled claude-hf-* aliases were removed in
+// v0.4.3 to test whether the Claude Desktop picker has a catalog-count
+// threshold. The huggingface provider config and HF_API_KEY / HF_TOKEN env
+// var precedence are still wired up (so users can re-add HF models via
+// MODEL_MAP env overrides). The routing/streaming tests below provide an
+// alias at runtime so they continue to verify the HF code path end-to-end.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('routes HuggingFace requests through the OpenAI-compatible router endpoint (runtime alias)', async (t) => {
   let upstreamPath;
   let upstreamAuthorization;
   let upstreamBody;
@@ -1325,9 +1295,24 @@ test('routes HuggingFace requests through the OpenAI-compatible router endpoint'
   await listen(hf);
   t.after(() => close(hf));
 
-  const proxy = createProxyServer(createTestConfig({
+  const config = createTestConfig({
     huggingfaceBaseUrl: `http://127.0.0.1:${hf.address().port}/v1`,
-  }));
+  });
+  // Runtime alias — same shape a user would set via MODEL_MAP env override.
+  config.modelMap = {
+    ...config.modelMap,
+    'claude-hf-llama-3.3-70b': 'meta-llama/Llama-3.3-70B-Instruct',
+  };
+  config.modelAliases = {
+    ...config.modelAliases,
+    'meta-llama/Llama-3.3-70B-Instruct': 'claude-hf-llama-3.3-70b',
+  };
+  config.modelRoutes = {
+    ...config.modelRoutes,
+    'claude-hf-llama-3.3-70b': 'huggingface',
+  };
+
+  const proxy = createProxyServer(config);
   await listen(proxy);
   t.after(() => close(proxy));
 
@@ -1349,7 +1334,7 @@ test('routes HuggingFace requests through the OpenAI-compatible router endpoint'
   assert.equal(response.body.content[0].text, 'hf ok');
 });
 
-test('converts HuggingFace streaming responses to Anthropic SSE', async (t) => {
+test('converts HuggingFace streaming responses to Anthropic SSE (runtime alias)', async (t) => {
   const hf = http.createServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     res.write('data: {"id":"hf_stream","model":"deepseek-ai/DeepSeek-R1","choices":[{"delta":{"content":"he"}}]}\n\n');
@@ -1358,9 +1343,23 @@ test('converts HuggingFace streaming responses to Anthropic SSE', async (t) => {
   await listen(hf);
   t.after(() => close(hf));
 
-  const proxy = createProxyServer(createTestConfig({
+  const config = createTestConfig({
     huggingfaceBaseUrl: `http://127.0.0.1:${hf.address().port}/v1`,
-  }));
+  });
+  config.modelMap = {
+    ...config.modelMap,
+    'claude-hf-deepseek-r1': 'deepseek-ai/DeepSeek-R1',
+  };
+  config.modelAliases = {
+    ...config.modelAliases,
+    'deepseek-ai/DeepSeek-R1': 'claude-hf-deepseek-r1',
+  };
+  config.modelRoutes = {
+    ...config.modelRoutes,
+    'claude-hf-deepseek-r1': 'huggingface',
+  };
+
+  const proxy = createProxyServer(config);
   await listen(proxy);
   t.after(() => close(proxy));
 
@@ -1392,7 +1391,7 @@ test('HuggingFace credentials load from HF_API_KEY / HF_TOKEN aliases too', () =
   assert.equal(both.providers.huggingface.upstreamApiKey, 'win');
 });
 
-test('/v1/models includes the HuggingFace Claude aliases', async (t) => {
+test('/v1/models does NOT include claude-hf-* aliases by default (v0.4.3 trim)', async (t) => {
   const proxy = createProxyServer(createTestConfig({}));
   await listen(proxy);
   t.after(() => close(proxy));
@@ -1401,14 +1400,10 @@ test('/v1/models includes the HuggingFace Claude aliases', async (t) => {
   assert.equal(response.statusCode, 200);
 
   const ids = response.body.data.map((m) => m.id);
-  for (const expected of [
-    'claude-hf-llama-3.3-70b',
-    'claude-hf-deepseek-r1',
-    'claude-hf-qwen-3-coder-480b',
-    'claude-hf-mistral-large-2411',
-  ]) {
-    assert.ok(ids.includes(expected), `expected ${expected} in /v1/models`);
-  }
+  const hfIds = ids.filter((id) => id.startsWith('claude-hf-'));
+  assert.equal(hfIds.length, 0, `expected zero claude-hf-* aliases in default catalog, got: ${hfIds.join(', ')}`);
+  // Catalog should be exactly 62 models — same count as the known-good 6315023.
+  assert.equal(response.body.data.length, 62, `default catalog size should be 62, got ${response.body.data.length}`);
 });
 
 test('buildTargetUrl does not produce /v1/v1 when the Ollama base URL already ends in /v1', async (t) => {

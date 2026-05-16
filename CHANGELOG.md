@@ -5,6 +5,47 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] — 2026-05-16
+
+### Reverted (empirical trim)
+
+- **Bundled `claude-hf-*` aliases removed.** All 22 HuggingFace Router
+  aliases that were shipped in `DEFAULT_MODEL_MAP` / `DEFAULT_MODEL_ALIASES`
+  / `DEFAULT_MODEL_ROUTES` are gone. Default catalog drops from **84 → 62
+  models** — exactly the count that worked in commit 6315023, the last
+  known-good Cowork / Code picker state. Goal: empirically verify whether
+  Claude Desktop's gateway picker has a catalog-count threshold that
+  triggers the truncated "5 native + 2 sibling" hardcoded list.
+- This is a **trial release**. If the picker now shows the full 62 in
+  both Cowork and Claude Code, we'll re-add HF in batches of ~5 aliases
+  to find the threshold.
+
+### Kept
+
+- `huggingface` provider configuration in `loadConfig` (URL + key + format
+  + auth scheme). Users who want HF back can add aliases via env overrides:
+
+  ```bash
+  MODEL_MAP='{"claude-hf-deepseek-r1":"deepseek-ai/DeepSeek-R1"}'
+  MODEL_ROUTES='{"claude-hf-deepseek-r1":"huggingface"}'
+  ```
+
+- `HUGGINGFACE_API_KEY` / `HF_API_KEY` / `HF_TOKEN` env-var precedence.
+- `HUGGINGFACE_BASE_URL` / `HF_BASE_URL` env-var precedence.
+- `huggingface_base_url` / `huggingface_api_key` fields in `manifest.json`
+  install dialog.
+- All other providers (Ollama Cloud, DeepSeek, Moonshot, GLM, Xiaomi MiMo,
+  OpenAI, Gemini, Qwen, Anthropic) unchanged.
+
+### Tests
+
+- HF routing + SSE tests now build the alias via runtime `MODEL_MAP`
+  overrides rather than relying on the bundled defaults; they continue to
+  verify the HF code path end-to-end.
+- New test `/v1/models does NOT include claude-hf-* aliases by default`
+  pins the trim.
+- 81 cases, all passing.
+
 ## [0.4.2] — 2026-05-15
 
 ### Reverted
